@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom'; // Importamos Link para la redirección
 import { collection, addDoc, query, where, getDocs } from "firebase/firestore";
 import { db } from './firebase'; 
 
@@ -7,16 +8,19 @@ const BatikLanding = () => {
   const [loading, setLoading] = useState(false);
   const [occupiedTimes, setOccupiedTimes] = useState([]);
   
-  // Estados para el calendario interactivo
   const today = new Date();
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   
+  // Agregamos los campos de usuario a los estados de la reserva
   const [bookingData, setBookingData] = useState({
     service: '',
     stylist: '',
     date: '', 
-    time: ''
+    time: '',
+    clientName: '',
+    clientPhone: '',
+    clientEmail: ''
   });
 
   const services = [
@@ -68,14 +72,20 @@ const BatikLanding = () => {
   const handleConfirmBooking = async () => {
     setLoading(true);
     try {
+      // 1. Guardar en Firebase incluyendo los datos del cliente
       await addDoc(collection(db, "turnos"), {
         service: bookingData.service,
         stylist: bookingData.stylist,
         date: bookingData.date,
         time: bookingData.time,
+        nombre: bookingData.clientName,
+        telefono: bookingData.clientPhone,
+        correo: bookingData.clientEmail,
+        origen: 'Web', // Para diferenciarlo de los que se agreguen manual
         createdAt: new Date()
       });
 
+      // 2. Enviar datos completos al Webhook de n8n
       const N8N_WEBHOOK_URL = 'TU_TEST_URL_DE_N8N_AQUI'; 
       await fetch(N8N_WEBHOOK_URL, {
         method: 'POST',
@@ -85,12 +95,18 @@ const BatikLanding = () => {
           stylist: bookingData.stylist,
           date: bookingData.date,
           time: bookingData.time,
+          nombre: bookingData.clientName,
+          telefono: bookingData.clientPhone,
+          correo: bookingData.clientEmail
         })
       });
 
       alert('¡Turno confirmado con éxito!');
       setStep(1);
-      setBookingData({ service: '', stylist: '', date: '', time: '' });
+      setBookingData({ 
+        service: '', stylist: '', date: '', time: '', 
+        clientName: '', clientPhone: '', clientEmail: '' 
+      });
       setCurrentMonth(today.getMonth());
       setCurrentYear(today.getFullYear());
     } catch (error) {
@@ -116,15 +132,12 @@ const BatikLanding = () => {
   const renderCalendarDays = () => {
     const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
     const firstDayIndex = new Date(currentYear, currentMonth, 1).getDay();
-
     const days = [];
     
-    // Espacios vacíos al principio del mes
     for (let i = 0; i < firstDayIndex; i++) {
       days.push(<div key={`empty-${i}`} className="h-10 w-10"></div>);
     }
 
-    // Calcular límites: Hoy y Hoy + 14 días (a medianoche para comparar bien)
     const todayMidnight = new Date();
     todayMidnight.setHours(0,0,0,0);
     
@@ -134,13 +147,11 @@ const BatikLanding = () => {
 
     for (let d = 1; d <= daysInMonth; d++) {
       const dateObj = new Date(currentYear, currentMonth, d);
-      
-      // Formatear a YYYY-MM-DD
       const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       
       const isPast = dateObj < todayMidnight;
       const isBeyondMax = dateObj > maxDate;
-      const isClosed = dateObj.getDay() === 0 || dateObj.getDay() === 1; // Dom(0) y Lun(1)
+      const isClosed = dateObj.getDay() === 0 || dateObj.getDay() === 1; 
       const isSelectable = !isPast && !isBeyondMax && !isClosed;
       
       const isSelected = bookingData.date === dateStr;
@@ -149,6 +160,7 @@ const BatikLanding = () => {
         <button
           key={d}
           disabled={!isSelectable}
+          type="button"
           onClick={() => setBookingData({...bookingData, date: dateStr, time: ''})}
           className={`h-10 w-10 rounded-full flex items-center justify-center text-sm transition mx-auto ${
             isSelected 
@@ -205,7 +217,7 @@ const BatikLanding = () => {
               2. Fecha y Hora
             </div>
             <div className={`flex-1 text-center py-4 border-l border-neutral-700 ${step === 3 ? 'bg-neutral-700 text-white' : 'text-neutral-400'}`}>
-              3. Confirmación
+              3. Datos y Confirmación
             </div>
           </div>
 
@@ -220,6 +232,7 @@ const BatikLanding = () => {
                     {stylists.map(s => (
                       <button
                         key={s.name}
+                        type="button"
                         onClick={() => setBookingData({...bookingData, stylist: s.name})}
                         className={`flex items-center gap-4 p-4 border rounded-lg transition ${
                           bookingData.stylist === s.name 
@@ -268,16 +281,13 @@ const BatikLanding = () => {
             {/* PASO 2: FECHA Y HORA */}
             {step === 2 && (
               <div className="animate-fade-in">
-                
                 <div className="grid md:grid-cols-2 gap-10">
-                  
-                  {/* CALENDARIO INTERACTIVO */}
                   <div>
                     <label className="block text-sm font-medium text-neutral-400 mb-4">Selecciona una fecha:</label>
                     <div className="bg-neutral-900 border border-neutral-700 rounded-lg p-4">
-                      {/* Cabecera del calendario */}
                       <div className="flex justify-between items-center mb-4">
                         <button 
+                          type="button"
                           onClick={handlePrevMonth}
                           disabled={currentMonth === today.getMonth() && currentYear === today.getFullYear()}
                           className="p-1 text-neutral-400 hover:text-white disabled:opacity-30 transition"
@@ -287,27 +297,19 @@ const BatikLanding = () => {
                         <span className="font-bold text-neutral-100">
                           {monthNames[currentMonth]} {currentYear}
                         </span>
-                        <button 
-                          onClick={handleNextMonth} 
-                          className="p-1 text-neutral-400 hover:text-white transition"
-                        >
+                        <button type="button" onClick={handleNextMonth} className="p-1 text-neutral-400 hover:text-white transition">
                           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
                         </button>
                       </div>
-                      
-                      {/* Días de la semana */}
                       <div className="grid grid-cols-7 text-center text-xs font-bold text-neutral-500 mb-2">
                         {daysOfWeek.map(day => <div key={day}>{day}</div>)}
                       </div>
-                      
-                      {/* Cuadrícula de días */}
                       <div className="grid grid-cols-7 gap-y-2 text-center">
                         {renderCalendarDays()}
                       </div>
                     </div>
                   </div>
 
-                  {/* HORARIOS DISPONIBLES */}
                   <div>
                     <label className="block text-sm font-medium text-neutral-400 mb-4">Horarios disponibles:</label>
                     {!bookingData.date ? (
@@ -324,13 +326,14 @@ const BatikLanding = () => {
                               <button 
                                 key={time}
                                 disabled={isOccupied}
+                                type="button"
                                 onClick={() => setBookingData({...bookingData, time: time})}
                                 className={`p-3 rounded-lg text-center font-medium transition border ${
                                   isOccupied 
                                     ? 'border-neutral-800 bg-neutral-950 text-neutral-700 cursor-not-allowed' 
                                     : isSelected
                                       ? 'bg-neutral-200 text-neutral-900 border-neutral-200 shadow-md'
-                                      : 'border-neutral-700 bg-neutral-800 hover:bg-neutral-600 text-neutral-200'
+                                      : 'border-neutral-700 bg-neutral-900 hover:bg-neutral-600 text-neutral-200'
                                 }`}
                               >
                                 {time}
@@ -341,11 +344,10 @@ const BatikLanding = () => {
                       </div>
                     )}
                   </div>
-
                 </div>
 
                 <div className="mt-10 flex justify-between pt-6 border-t border-neutral-700">
-                  <button onClick={handleBack} className="text-neutral-400 hover:text-white transition">← Atrás</button>
+                  <button type="button" onClick={handleBack} className="text-neutral-400 hover:text-white transition">← Atrás</button>
                   <button 
                     disabled={!bookingData.date || !bookingData.time}
                     onClick={handleNext}
@@ -357,20 +359,59 @@ const BatikLanding = () => {
               </div>
             )}
 
-            {/* PASO 3: CONFIRMACIÓN */}
+            {/* PASO 3: DATOS DEL CLIENTE Y CONFIRMACIÓN */}
             {step === 3 && (
-              <div className="animate-fade-in flex flex-col items-center py-6">
-                <h3 className="text-2xl font-bold mb-6 text-neutral-100">Revisá tu turno</h3>
-                <div className="w-full bg-neutral-900 p-6 rounded-lg mb-8 border border-neutral-700 space-y-4">
-                  <div className="flex justify-between items-center border-b border-neutral-800 pb-3">
+              <div className="animate-fade-in space-y-6">
+                <h3 className="text-xl font-medium text-neutral-200">Tus Datos Personales</h3>
+                
+                {/* Formulario de contacto requerido al terminar el turno */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-neutral-900 p-6 rounded-lg border border-neutral-700">
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-medium text-neutral-400 mb-2">Nombre Completo *</label>
+                    <input 
+                      type="text"
+                      required
+                      placeholder="Ej. Juan Pérez"
+                      value={bookingData.clientName}
+                      onChange={(e) => setBookingData({...bookingData, clientName: e.target.value})}
+                      className="w-full p-3 bg-neutral-950 border border-neutral-700 rounded text-white focus:outline-none focus:border-neutral-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-neutral-400 mb-2">Teléfono de Contacto *</label>
+                    <input 
+                      type="tel"
+                      required
+                      placeholder="Ej. 2615551234"
+                      value={bookingData.clientPhone}
+                      onChange={(e) => setBookingData({...bookingData, clientPhone: e.target.value})}
+                      className="w-full p-3 bg-neutral-950 border border-neutral-700 rounded text-white focus:outline-none focus:border-neutral-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-neutral-400 mb-2">Correo Electrónico *</label>
+                    <input 
+                      type="email"
+                      required
+                      placeholder="ejemplo@correo.com"
+                      value={bookingData.clientEmail}
+                      onChange={(e) => setBookingData({...bookingData, clientEmail: e.target.value})}
+                      className="w-full p-3 bg-neutral-950 border border-neutral-700 rounded text-white focus:outline-none focus:border-neutral-500"
+                    />
+                  </div>
+                </div>
+
+                <h3 className="text-lg font-medium text-neutral-200 pt-2">Resumen de tu reserva</h3>
+                <div className="w-full bg-neutral-900 p-6 rounded-lg border border-neutral-700 space-y-3 text-sm">
+                  <div className="flex justify-between items-center border-b border-neutral-800 pb-2">
                     <span className="text-neutral-400">Servicio:</span> 
                     <span className="font-medium text-right">{bookingData.service}</span>
                   </div>
-                  <div className="flex justify-between items-center border-b border-neutral-800 pb-3">
+                  <div className="flex justify-between items-center border-b border-neutral-800 pb-2">
                     <span className="text-neutral-400">Profesional:</span> 
                     <span className="font-medium">{bookingData.stylist}</span>
                   </div>
-                  <div className="flex justify-between items-center border-b border-neutral-800 pb-3">
+                  <div className="flex justify-between items-center border-b border-neutral-800 pb-2">
                     <span className="text-neutral-400">Fecha y Hora:</span> 
                     <span className="font-medium text-right">
                       {bookingData.date.split('-').reverse().join('/')} a las {bookingData.time} hs
@@ -378,15 +419,19 @@ const BatikLanding = () => {
                   </div>
                   <div className="flex justify-between items-center pt-2">
                     <span className="text-neutral-400">Total a pagar en el local:</span> 
-                    <span className="font-bold text-xl text-white">${selectedServiceObj?.price.toLocaleString('es-AR')}</span>
+                    <span className="font-bold text-base text-white">${selectedServiceObj?.price.toLocaleString('es-AR')}</span>
                   </div>
                 </div>
                 
-                <div className="w-full flex justify-between">
-                  <button onClick={handleBack} className="text-neutral-400 hover:text-white transition">← Atrás</button>
+                <div className="w-full flex justify-between pt-4 border-t border-neutral-700">
+                  <button type="button" onClick={handleBack} className="text-neutral-400 hover:text-white transition">← Atrás</button>
                   <button 
-                    disabled={loading}
-                    className={`py-3 px-8 rounded font-bold transition ${loading ? 'bg-neutral-600 text-neutral-400 cursor-not-allowed' : 'bg-neutral-200 text-neutral-900 hover:bg-white'}`}
+                    disabled={loading || !bookingData.clientName || !bookingData.clientPhone || !bookingData.clientEmail}
+                    className={`py-3 px-8 rounded font-bold transition ${
+                      loading || !bookingData.clientName || !bookingData.clientPhone || !bookingData.clientEmail
+                        ? 'bg-neutral-600 text-neutral-400 cursor-not-allowed opacity-50' 
+                        : 'bg-neutral-200 text-neutral-900 hover:bg-white'
+                    }`}
                     onClick={handleConfirmBooking}
                   >
                     {loading ? 'Procesando...' : 'Confirmar Turno'}
@@ -410,7 +455,7 @@ const BatikLanding = () => {
             <p>Martes a Sábados de 10:00 a 18:00 hs</p>
           </div>
 
-          <div className="flex justify-center gap-6 mb-16">
+          <div className="flex justify-center gap-6 mb-12">
             <a href="#" className="w-12 h-12 rounded-full bg-neutral-900 border border-neutral-800 flex items-center justify-center hover:bg-neutral-800 transition text-neutral-400 hover:text-white">
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z" /></svg>
             </a>
@@ -420,6 +465,16 @@ const BatikLanding = () => {
             <a href="#" className="w-12 h-12 rounded-full bg-neutral-900 border border-neutral-800 flex items-center justify-center hover:bg-neutral-800 transition text-neutral-400 hover:text-white">
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.347-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.876 1.213 3.074.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z" /></svg>
             </a>
+          </div>
+
+          {/* BOTÓN AL DASHBOARD DE ADMINISTRACIÓN */}
+          <div className="mb-6">
+            <Link 
+              to="/admin" 
+              className="inline-block border border-neutral-800 text-neutral-500 hover:text-neutral-300 hover:border-neutral-600 text-xs py-2 px-4 rounded transition bg-neutral-900/30"
+            >
+              ⚙️ Acceso Panel Administrativo
+            </Link>
           </div>
 
           <p className="text-neutral-500 text-xs">
