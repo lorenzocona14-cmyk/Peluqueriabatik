@@ -1,18 +1,70 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { collection, getDocs, addDoc, deleteDoc, doc } from 'firebase/firestore';
+import { db } from './firebase';
 
 const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('inicio');
 
-  // Datos de prueba (Luego los conectaremos a Firebase)
-  const [servicios, setServicios] = useState([
-    { id: 1, name: 'Corte de pelo (Hombre)', price: 13000 },
-    { id: 2, name: 'Corte Premium', price: 15000 },
+  // Estados reales para Firebase
+  const [servicios, setServicios] = useState([]);
+  const [nuevoServicio, setNuevoServicio] = useState({ name: '', price: '' });
+  const [loadingServicios, setLoadingServicios] = useState(false);
+
+  // Datos de prueba temporales solo para las otras pestañas
+  const [clientes, setClientes] = useState([
+    { id: 1, nombre: 'Juan Pérez', telefono: '2615551234', servicio: 'Corte Premium', peluquero: 'Eze', origen: 'Web', fecha: '2026-06-15' }
   ]);
 
-  const [clientes, setClientes] = useState([
-    { id: 1, nombre: 'Juan Pérez', telefono: '2615551234', servicio: 'Corte Premium', peluquero: 'Eze', origen: 'Web', fecha: '2026-06-15' },
-    { id: 2, nombre: 'Martín Gómez', telefono: '2615559876', servicio: 'Corte con Barba', peluquero: 'Nico', origen: 'Local', fecha: '2026-06-15' },
-  ]);
+  // --- LÓGICA DE SERVICIOS (FIREBASE) ---
+  const fetchServicios = async () => {
+    setLoadingServicios(true);
+    try {
+      const querySnapshot = await getDocs(collection(db, "servicios"));
+      const servs = [];
+      querySnapshot.forEach((doc) => {
+        servs.push({ id: doc.id, ...doc.data() });
+      });
+      setServicios(servs);
+    } catch (error) {
+      console.error("Error al cargar servicios:", error);
+    }
+    setLoadingServicios(false);
+  };
+
+  // Cargar servicios cuando el usuario entra a la pestaña de servicios
+  useEffect(() => {
+    if (activeTab === 'servicios') {
+      fetchServicios();
+    }
+  }, [activeTab]);
+
+  const handleAddServicio = async (e) => {
+    e.preventDefault();
+    if (!nuevoServicio.name || !nuevoServicio.price) return;
+    
+    try {
+      await addDoc(collection(db, "servicios"), {
+        name: nuevoServicio.name,
+        price: Number(nuevoServicio.price)
+      });
+      setNuevoServicio({ name: '', price: '' });
+      fetchServicios(); // Recargar la lista
+    } catch (error) {
+      console.error("Error al agregar:", error);
+      alert("Hubo un error al guardar el servicio.");
+    }
+  };
+
+  const handleDeleteServicio = async (id) => {
+    if (window.confirm("¿Seguro que querés eliminar este servicio?")) {
+      try {
+        await deleteDoc(doc(db, "servicios", id));
+        fetchServicios(); // Recargar la lista
+      } catch (error) {
+        console.error("Error al eliminar:", error);
+      }
+    }
+  };
 
   const renderContent = () => {
     switch (activeTab) {
@@ -82,7 +134,6 @@ const AdminDashboard = () => {
         return (
           <div className="animate-fade-in space-y-6">
             <h2 className="text-2xl font-bold text-neutral-100">Bloqueo de Fechas</h2>
-            <p className="text-neutral-400">Seleccioná los días que la peluquería o un peluquero no estará disponible.</p>
             <div className="bg-neutral-900 p-6 rounded-lg border border-neutral-800 max-w-md">
               <label className="block text-sm font-medium text-neutral-400 mb-2">Fecha a bloquear:</label>
               <input type="date" className="w-full p-3 bg-neutral-950 border border-neutral-700 rounded text-neutral-100 mb-4" />
@@ -107,11 +158,9 @@ const AdminDashboard = () => {
               <div className="bg-neutral-900 p-6 rounded-lg border border-neutral-800">
                 <h3 className="text-lg font-bold mb-4 text-neutral-200">Horarios Activos</h3>
                 <div className="flex flex-wrap gap-2">
-                  {['10:00', '10:30', '11:00', '11:30', '12:00'].map(h => (
-                    <span key={h} className="bg-neutral-800 border border-neutral-700 px-3 py-1 rounded text-sm text-neutral-300 flex items-center gap-2">
-                      {h} <button className="text-red-400 hover:text-red-300">×</button>
-                    </span>
-                  ))}
+                  <span className="bg-neutral-800 border border-neutral-700 px-3 py-1 rounded text-sm text-neutral-300 flex items-center gap-2">
+                    10:00 <button className="text-red-400 hover:text-red-300">×</button>
+                  </span>
                 </div>
               </div>
               <div className="bg-neutral-900 p-6 rounded-lg border border-neutral-800">
@@ -132,23 +181,59 @@ const AdminDashboard = () => {
           <div className="animate-fade-in space-y-6">
             <div className="flex justify-between items-center">
               <h2 className="text-2xl font-bold text-neutral-100">Servicios y Precios</h2>
-              <button className="bg-neutral-100 text-neutral-900 px-4 py-2 rounded-lg font-bold hover:bg-white transition">
-                + Nuevo Servicio
-              </button>
             </div>
+
+            {/* Formulario para agregar un servicio nuevo */}
+            <form onSubmit={handleAddServicio} className="bg-neutral-900 p-6 rounded-lg border border-neutral-800 flex flex-col md:flex-row gap-4 items-end">
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-neutral-400 mb-2">Nombre del Servicio</label>
+                <input 
+                  type="text" 
+                  placeholder="Ej: Corte Clásico"
+                  value={nuevoServicio.name}
+                  onChange={(e) => setNuevoServicio({...nuevoServicio, name: e.target.value})}
+                  className="w-full p-3 bg-neutral-950 border border-neutral-700 rounded text-neutral-100 focus:outline-none focus:border-neutral-500"
+                  required
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-neutral-400 mb-2">Precio ($)</label>
+                <input 
+                  type="number" 
+                  placeholder="Ej: 15000"
+                  value={nuevoServicio.price}
+                  onChange={(e) => setNuevoServicio({...nuevoServicio, price: e.target.value})}
+                  className="w-full p-3 bg-neutral-950 border border-neutral-700 rounded text-neutral-100 focus:outline-none focus:border-neutral-500"
+                  required
+                />
+              </div>
+              <button type="submit" className="bg-neutral-100 text-neutral-900 px-6 py-3 rounded-lg font-bold hover:bg-white transition w-full md:w-auto">
+                + Agregar Servicio
+              </button>
+            </form>
+
+            {/* Lista de servicios desde Firebase */}
             <div className="grid gap-4">
-              {servicios.map(svc => (
-                <div key={svc.id} className="bg-neutral-900 p-4 rounded-lg border border-neutral-800 flex justify-between items-center">
-                  <div>
-                    <h3 className="font-bold text-neutral-200">{svc.name}</h3>
-                    <p className="text-neutral-400">${svc.price.toLocaleString('es-AR')}</p>
+              {loadingServicios ? (
+                <p className="text-neutral-500 text-center py-4">Cargando servicios...</p>
+              ) : servicios.length === 0 ? (
+                <p className="text-neutral-500 text-center py-4">No hay servicios cargados. Agregá uno arriba.</p>
+              ) : (
+                servicios.map(svc => (
+                  <div key={svc.id} className="bg-neutral-900 p-4 rounded-lg border border-neutral-800 flex justify-between items-center">
+                    <div>
+                      <h3 className="font-bold text-neutral-200">{svc.name}</h3>
+                      <p className="text-neutral-400">${svc.price.toLocaleString('es-AR')}</p>
+                    </div>
+                    <button 
+                      onClick={() => handleDeleteServicio(svc.id)}
+                      className="text-red-400 hover:text-red-300 text-sm font-medium px-3 py-1 border border-red-500/20 rounded bg-red-500/10 hover:bg-red-500/20 transition"
+                    >
+                      Eliminar
+                    </button>
                   </div>
-                  <div className="flex gap-3">
-                    <button className="text-blue-400 hover:text-blue-300 text-sm font-medium">Editar</button>
-                    <button className="text-red-400 hover:text-red-300 text-sm font-medium">Eliminar</button>
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         );
@@ -160,9 +245,7 @@ const AdminDashboard = () => {
 
   return (
     <div className="min-h-screen bg-neutral-950 flex text-neutral-50 font-sans selection:bg-neutral-700">
-      
-      {/* MENU LATERAL (SIDEBAR) */}
-      <aside className="w-64 bg-neutral-900 border-r border-neutral-800 flex flex-col">
+      <aside className="w-64 bg-neutral-900 border-r border-neutral-800 flex flex-col shrink-0 hidden md:flex">
         <div className="p-6 border-b border-neutral-800">
           <h1 className="text-2xl font-black tracking-widest text-neutral-100">BATIK</h1>
           <p className="text-xs text-neutral-500 uppercase tracking-wider mt-1">Panel de Control</p>
@@ -195,13 +278,11 @@ const AdminDashboard = () => {
         </div>
       </aside>
 
-      {/* CONTENIDO PRINCIPAL */}
-      <main className="flex-1 p-10 overflow-y-auto">
+      <main className="flex-1 p-6 md:p-10 overflow-y-auto w-full">
         <div className="max-w-5xl mx-auto">
           {renderContent()}
         </div>
       </main>
-
     </div>
   );
 };
