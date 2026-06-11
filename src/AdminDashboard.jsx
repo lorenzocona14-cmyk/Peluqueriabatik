@@ -155,7 +155,7 @@ const AdminDashboard = () => {
       if (imageFile) {
         const formData = new FormData();
         formData.append('image', imageFile);
-        const apiKey = 'TU_API_KEY_DE_IMGBB_ACA'; // TU API KEY DE IMGBB
+        const apiKey = '9d8cc5a9d9abff0bc9050f7288a07f80'; // TU API KEY DE IMGBB
         const imgbbRes = await fetch(`https://api.imgbb.com/1/upload?key=${apiKey}`, { method: 'POST', body: formData });
         const imgbbData = await imgbbRes.json();
         if (imgbbData.success) imageUrl = imgbbData.data.url;
