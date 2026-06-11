@@ -359,7 +359,14 @@ const BatikLanding = () => {
         <div className="max-w-4xl mx-auto px-6 text-center">
           <h2 className="text-3xl font-black tracking-widest text-neutral-100 mb-6">BATIK</h2>
           <div className="space-y-2 mb-10 text-neutral-400 text-sm font-bold"><p>Gral. Julio A. Roca 1296</p><p>M5539 Las Heras, Mendoza, Argentina</p><p>Martes a Sábados de 10:00 a 18:00 hs</p></div>
-          <div className="mb-6"><Link to="/admin" className="inline-block border border-neutral-800 text-neutral-500 hover:text-neutral-300 hover:border-neutral-600 text-xs py-2 px-4 rounded transition bg-neutral-900/30 font-bold">⚙️ Panel Administrativo</Link></div>
+          <div className="mb-6">
+            <Link 
+              to="/admin" 
+              className="inline-block bg-red-600 text-white font-black text-lg py-4 px-10 rounded-2xl shadow-lg hover:bg-red-700 transition transform hover:scale-105"
+            >
+              DASHBOARD
+            </Link>
+          </div>
           <p className="text-neutral-500 text-xs font-bold">Desarrollado por Lorenzo Cona</p>
         </div>
       </footer>
