@@ -14,7 +14,7 @@ const BatikLanding = () => {
   
   // ESTADOS QUE CONSUMEN FIREBASE
   const [dbServices, setDbServices] = useState([]);
-  const [dbHorarios, setDbHorarios] = useState([]);
+  const [dbHorarios, setDbHorarios] = useState([]); // Ahora es una lista de objetos {stylist, time}
   const [blockedDates, setBlockedDates] = useState([]);
   const [loadingConfig, setLoadingConfig] = useState(true);
 
@@ -35,17 +35,14 @@ const BatikLanding = () => {
   useEffect(() => {
     const fetchGlobalConfig = async () => {
       try {
-        // Servicios
         const servSnap = await getDocs(collection(db, "servicios"));
         setDbServices(servSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         
-        // Horarios disponibles
         const horSnap = await getDocs(collection(db, "horarios"));
-        const timesArr = horSnap.docs.map(doc => doc.data().time);
-        timesArr.sort((a, b) => a.localeCompare(b)); // Ordenar cronológicamente
+        const timesArr = horSnap.docs.map(doc => doc.data());
+        timesArr.sort((a, b) => a.time.localeCompare(b.time)); // Ordenar por hora
         setDbHorarios(timesArr);
 
-        // Fechas bloqueadas
         const blockSnap = await getDocs(collection(db, "fechas_bloqueadas"));
         setBlockedDates(blockSnap.docs.map(doc => doc.data()));
 
@@ -106,6 +103,11 @@ const BatikLanding = () => {
 
   const selectedServiceObj = dbServices.find(s => s.name === bookingData.service);
 
+  // Filtrar los horarios que correspondan SÓLO al peluquero elegido
+  const horariosDisponibles = dbHorarios
+    .filter(h => h.stylist === bookingData.stylist)
+    .map(h => h.time);
+
   const renderCalendarDays = () => {
     const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
     const firstDayIndex = new Date(currentYear, currentMonth, 1).getDay();
@@ -122,9 +124,9 @@ const BatikLanding = () => {
       
       const isPast = dateObj < todayMidnight;
       const isBeyondMax = dateObj > maxDate;
-      const isClosed = dateObj.getDay() === 0 || dateObj.getDay() === 1; // Domingos y Lunes
+      const isClosed = dateObj.getDay() === 0 || dateObj.getDay() === 1; // Domingos y Lunes cerrados
       
-      // CHEQUEAR SI LA FECHA ESTÁ BLOQUEADA EN FIREBASE
+      // CHEQUEAR BLOQUEO INDIVIDUAL O TOTAL
       const isBlocked = blockedDates.some(b => b.date === dateStr && (b.stylist === 'Todos' || b.stylist === bookingData.stylist));
       
       const isSelectable = !isPast && !isBeyondMax && !isClosed && !isBlocked;
@@ -149,7 +151,6 @@ const BatikLanding = () => {
 
   return (
     <div className="min-h-screen bg-neutral-900 text-neutral-50 font-sans selection:bg-neutral-700">
-      
       <nav className="fixed top-0 w-full bg-neutral-900/90 backdrop-blur-md border-b border-neutral-800 z-50">
         <div className="max-w-6xl mx-auto px-6 h-20 flex items-center justify-between">
           <div className="text-2xl font-bold tracking-widest">BATIK</div>
@@ -185,7 +186,7 @@ const BatikLanding = () => {
                   <label className="block text-sm font-medium text-neutral-400 mb-3">Peluquero:</label>
                   <div className="grid grid-cols-2 gap-4">
                     {stylists.map(s => (
-                      <button key={s.name} type="button" onClick={() => setBookingData({...bookingData, stylist: s.name})}
+                      <button key={s.name} type="button" onClick={() => setBookingData({...bookingData, stylist: s.name, date: '', time: ''})}
                         className={`flex items-center gap-4 p-4 border rounded-lg transition ${bookingData.stylist === s.name ? 'border-neutral-300 bg-neutral-700 text-white' : 'border-neutral-700 bg-neutral-900 hover:border-neutral-500 text-neutral-300'}`}
                       >
                         <div className="w-12 h-12 rounded-full bg-neutral-800 border border-neutral-600 flex items-center justify-center shrink-0"><span className="text-[10px] text-neutral-500">{s.photoPlaceholder}</span></div>
@@ -218,7 +219,7 @@ const BatikLanding = () => {
               <div className="animate-fade-in">
                 <div className="grid md:grid-cols-2 gap-10">
                   <div>
-                    <label className="block text-sm font-medium text-neutral-400 mb-4">Selecciona una fecha:</label>
+                    <label className="block text-sm font-medium text-neutral-400 mb-4">Selecciona una fecha para {bookingData.stylist}:</label>
                     <div className="bg-neutral-900 border border-neutral-700 rounded-lg p-4">
                       <div className="flex justify-between items-center mb-4">
                         <button type="button" onClick={() => { if(currentMonth === 0){setCurrentMonth(11);setCurrentYear(currentYear-1)}else{setCurrentMonth(currentMonth-1)} }} disabled={currentMonth === today.getMonth() && currentYear === today.getFullYear()} className="p-1 text-neutral-400 hover:text-white disabled:opacity-30">{'<'}</button>
@@ -231,19 +232,19 @@ const BatikLanding = () => {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-neutral-400 mb-4">Horarios disponibles:</label>
+                    <label className="block text-sm font-medium text-neutral-400 mb-4">Horarios de {bookingData.stylist}:</label>
                     {!bookingData.date ? (
-                      <div className="h-[280px] flex items-center justify-center bg-neutral-900 border border-neutral-700 rounded-lg p-6 text-center text-neutral-500 text-sm">Selecciona una fecha en el calendario para ver los horarios.</div>
+                      <div className="h-[280px] flex items-center justify-center bg-neutral-900 border border-neutral-700 rounded-lg p-6 text-center text-neutral-500 text-sm">Selecciona una fecha en el calendario.</div>
                     ) : (
                       <div className="bg-neutral-900 border border-neutral-700 rounded-lg p-4 h-[280px]">
                         <div className="grid grid-cols-2 gap-3 h-full overflow-y-auto pr-2 custom-scrollbar content-start">
-                          {dbHorarios.length === 0 ? <span className="col-span-2 text-center text-neutral-500 mt-4">Sin horarios.</span> : null}
-                          {dbHorarios.map(time => {
+                          {horariosDisponibles.length === 0 ? <span className="col-span-2 text-center text-neutral-500 mt-4 text-xs font-bold">No hay horarios registrados para este profesional.</span> : null}
+                          {horariosDisponibles.map(time => {
                             const isOccupied = occupiedTimes.includes(time);
                             const isSelected = bookingData.time === time;
                             return (
                               <button key={time} disabled={isOccupied} type="button" onClick={() => setBookingData({...bookingData, time: time})}
-                                className={`p-3 rounded-lg text-center font-medium transition border ${isOccupied ? 'border-neutral-800 bg-neutral-950 text-neutral-700 cursor-not-allowed' : isSelected ? 'bg-neutral-200 text-neutral-900 border-neutral-200' : 'border-neutral-700 bg-neutral-900 hover:bg-neutral-600 text-neutral-200'}`}
+                                className={`p-3 rounded-lg text-center font-black transition border ${isOccupied ? 'border-neutral-800 bg-neutral-950 text-neutral-700 cursor-not-allowed' : isSelected ? 'bg-neutral-200 text-neutral-900 border-neutral-200' : 'border-neutral-700 bg-neutral-900 hover:bg-neutral-600 text-neutral-200'}`}
                               >
                                 {time}
                               </button>
@@ -266,21 +267,21 @@ const BatikLanding = () => {
               <div className="animate-fade-in space-y-6">
                 <h3 className="text-xl font-medium text-neutral-200">Tus Datos Personales</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-neutral-900 p-6 rounded-lg border border-neutral-700">
-                  <div className="sm:col-span-2"><label className="block text-xs font-medium text-neutral-400 mb-2">Nombre Completo *</label><input type="text" required value={bookingData.clientName} onChange={e => setBookingData({...bookingData, clientName: e.target.value})} className="w-full p-3 bg-neutral-950 border border-neutral-700 rounded text-white" /></div>
-                  <div><label className="block text-xs font-medium text-neutral-400 mb-2">Teléfono de Contacto *</label><input type="tel" required value={bookingData.clientPhone} onChange={e => setBookingData({...bookingData, clientPhone: e.target.value})} className="w-full p-3 bg-neutral-950 border border-neutral-700 rounded text-white" /></div>
-                  <div><label className="block text-xs font-medium text-neutral-400 mb-2">Correo Electrónico *</label><input type="email" required value={bookingData.clientEmail} onChange={e => setBookingData({...bookingData, clientEmail: e.target.value})} className="w-full p-3 bg-neutral-950 border border-neutral-700 rounded text-white" /></div>
+                  <div className="sm:col-span-2"><label className="block text-xs font-medium text-neutral-400 mb-2">Nombre Completo *</label><input type="text" required value={bookingData.clientName} onChange={e => setBookingData({...bookingData, clientName: e.target.value})} className="w-full p-3 bg-neutral-950 border border-neutral-700 rounded text-white font-bold" /></div>
+                  <div><label className="block text-xs font-medium text-neutral-400 mb-2">Teléfono de Contacto *</label><input type="tel" required value={bookingData.clientPhone} onChange={e => setBookingData({...bookingData, clientPhone: e.target.value})} className="w-full p-3 bg-neutral-950 border border-neutral-700 rounded text-white font-bold" /></div>
+                  <div><label className="block text-xs font-medium text-neutral-400 mb-2">Correo Electrónico *</label><input type="email" required value={bookingData.clientEmail} onChange={e => setBookingData({...bookingData, clientEmail: e.target.value})} className="w-full p-3 bg-neutral-950 border border-neutral-700 rounded text-white font-bold" /></div>
                 </div>
 
                 <h3 className="text-lg font-medium text-neutral-200 pt-2">Resumen de tu reserva</h3>
                 <div className="w-full bg-neutral-900 p-6 rounded-lg border border-neutral-700 space-y-3 text-sm">
-                  <div className="flex justify-between items-center border-b border-neutral-800 pb-2"><span className="text-neutral-400">Servicio:</span> <span className="font-medium text-right">{bookingData.service}</span></div>
-                  <div className="flex justify-between items-center border-b border-neutral-800 pb-2"><span className="text-neutral-400">Profesional:</span> <span className="font-medium">{bookingData.stylist}</span></div>
-                  <div className="flex justify-between items-center border-b border-neutral-800 pb-2"><span className="text-neutral-400">Fecha y Hora:</span> <span className="font-medium text-right">{bookingData.date.split('-').reverse().join('/')} a las {bookingData.time} hs</span></div>
-                  <div className="flex justify-between items-center pt-2"><span className="text-neutral-400">Total a pagar:</span> <span className="font-bold text-base text-white">${selectedServiceObj?.price.toLocaleString('es-AR')}</span></div>
+                  <div className="flex justify-between items-center border-b border-neutral-800 pb-2"><span className="text-neutral-400">Servicio:</span> <span className="font-bold text-right">{bookingData.service}</span></div>
+                  <div className="flex justify-between items-center border-b border-neutral-800 pb-2"><span className="text-neutral-400">Profesional:</span> <span className="font-bold text-white bg-neutral-800 px-2 py-1 rounded">{bookingData.stylist}</span></div>
+                  <div className="flex justify-between items-center border-b border-neutral-800 pb-2"><span className="text-neutral-400">Fecha y Hora:</span> <span className="font-bold text-right">{bookingData.date.split('-').reverse().join('/')} a las {bookingData.time} hs</span></div>
+                  <div className="flex justify-between items-center pt-2"><span className="text-neutral-400">Total a pagar:</span> <span className="font-black text-lg text-white">${selectedServiceObj?.price.toLocaleString('es-AR')}</span></div>
                 </div>
                 
                 <div className="w-full flex justify-between pt-4 border-t border-neutral-700">
-                  <button type="button" onClick={handleBack} className="text-neutral-400 hover:text-white transition">← Atrás</button>
+                  <button type="button" onClick={handleBack} className="text-neutral-400 hover:text-white transition font-bold">← Atrás</button>
                   <button disabled={loading || !bookingData.clientName || !bookingData.clientPhone || !bookingData.clientEmail} onClick={handleConfirmBooking} className={`py-3 px-8 rounded font-bold transition ${loading || !bookingData.clientName || !bookingData.clientPhone || !bookingData.clientEmail ? 'bg-neutral-600 text-neutral-400 opacity-50' : 'bg-neutral-200 text-neutral-900 hover:bg-white'}`}>
                     {loading ? 'Procesando...' : 'Confirmar Turno'}
                   </button>
@@ -292,23 +293,23 @@ const BatikLanding = () => {
       </section>
 
       <section id="servicios-lista" className="py-20 px-6 max-w-6xl mx-auto border-t border-neutral-800">
-        <div className="text-center mb-16"><h2 className="text-4xl font-black tracking-widest text-neutral-100 uppercase">Nuestros Servicios</h2><p className="text-neutral-400 mt-4 text-lg">Elegí tu estilo en Batik</p></div>
-        {loadingConfig ? <div className="text-center text-neutral-500 py-10">Cargando catálogo...</div> : dbServices.length === 0 ? <div className="text-center text-neutral-500 py-10">Aún no hay servicios disponibles.</div> : (
+        <div className="text-center mb-16"><h2 className="text-4xl font-black tracking-widest text-neutral-100 uppercase">Nuestros Servicios</h2><p className="text-neutral-400 mt-4 text-lg font-bold">Elegí tu estilo en Batik</p></div>
+        {loadingConfig ? <div className="text-center text-neutral-500 py-10 font-bold">Cargando catálogo...</div> : dbServices.length === 0 ? <div className="text-center text-neutral-500 py-10 font-bold">Aún no hay servicios disponibles.</div> : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {dbServices.map(svc => (
               <div key={svc.id} className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden flex flex-col hover:border-neutral-600 transition shadow-lg group">
                 {svc.image ? (
                   <div className="h-56 w-full overflow-hidden relative"><img src={svc.image} alt={svc.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" /><div className="absolute inset-0 bg-gradient-to-t from-neutral-900 to-transparent"></div></div>
                 ) : (
-                  <div className="h-56 w-full bg-neutral-950 flex items-center justify-center border-b border-neutral-800"><span className="text-neutral-600 text-sm uppercase tracking-widest font-bold">Batik</span></div>
+                  <div className="h-56 w-full bg-neutral-950 flex items-center justify-center border-b border-neutral-800"><span className="text-neutral-600 text-sm uppercase tracking-widest font-black">Batik</span></div>
                 )}
                 <div className="p-6 flex flex-col flex-1 relative -mt-8">
                   <div className="flex justify-between items-start mb-3 bg-neutral-900 pt-2 rounded-t-lg">
-                    <h3 className="text-xl font-bold text-neutral-100 pr-4">{svc.name}</h3>
+                    <h3 className="text-xl font-black text-neutral-100 pr-4">{svc.name}</h3>
                     <span className="text-xl font-black text-white bg-neutral-800 px-3 py-1 rounded-lg border border-neutral-700">${svc.price.toLocaleString('es-AR')}</span>
                   </div>
-                  <p className="text-neutral-400 text-sm flex-1 mb-8 leading-relaxed">{svc.description || 'Consulta más detalles en el local.'}</p>
-                  <a href="#turnos" onClick={() => { setBookingData({...bookingData, service: svc.name}); setStep(1); }} className="block text-center w-full bg-neutral-800 border border-neutral-700 text-neutral-200 font-bold py-3 rounded-lg hover:bg-neutral-200 hover:text-neutral-900 transition mt-auto">Agendar este corte</a>
+                  <p className="text-neutral-400 text-sm flex-1 mb-8 leading-relaxed font-medium">{svc.description || 'Consulta más detalles en el local.'}</p>
+                  <a href="#turnos" onClick={() => { setBookingData({...bookingData, service: svc.name}); setStep(1); }} className="block text-center w-full bg-neutral-800 border border-neutral-700 text-neutral-200 font-black py-3 rounded-lg hover:bg-neutral-200 hover:text-neutral-900 transition mt-auto">Agendar este corte</a>
                 </div>
               </div>
             ))}
@@ -319,9 +320,9 @@ const BatikLanding = () => {
       <footer id="contacto" className="bg-neutral-950 pt-16 pb-8 border-t border-neutral-800">
         <div className="max-w-4xl mx-auto px-6 text-center">
           <h2 className="text-3xl font-black tracking-widest text-neutral-100 mb-6">BATIK</h2>
-          <div className="space-y-2 mb-10 text-neutral-400 text-sm"><p>Gral. Julio A. Roca 1296</p><p>M5539 Las Heras, Mendoza, Argentina</p><p>Martes a Sábados de 10:00 a 18:00 hs</p></div>
-          <div className="mb-6"><Link to="/admin" className="inline-block border border-neutral-800 text-neutral-500 hover:text-neutral-300 hover:border-neutral-600 text-xs py-2 px-4 rounded transition bg-neutral-900/30">⚙️ Panel Administrativo</Link></div>
-          <p className="text-neutral-500 text-xs">Desarrollado por Lorenzo Cona</p>
+          <div className="space-y-2 mb-10 text-neutral-400 text-sm font-bold"><p>Gral. Julio A. Roca 1296</p><p>M5539 Las Heras, Mendoza, Argentina</p><p>Martes a Sábados de 10:00 a 18:00 hs</p></div>
+          <div className="mb-6"><Link to="/admin" className="inline-block border border-neutral-800 text-neutral-500 hover:text-neutral-300 hover:border-neutral-600 text-xs py-2 px-4 rounded transition bg-neutral-900/30 font-bold">⚙️ Panel Administrativo</Link></div>
+          <p className="text-neutral-500 text-xs font-bold">Desarrollado por Lorenzo Cona</p>
         </div>
       </footer>
     </div>
