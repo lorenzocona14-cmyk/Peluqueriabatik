@@ -47,7 +47,7 @@ const AdminDashboard = () => {
         formData.append('image', imageFile);
 
         // REEMPLAZÁ EL TEXTO DE ABAJO CON TU API KEY REAL
-        const apiKey = 'TU_API_KEY_DE_IMGBB_ACA'; 
+        const apiKey = '9d8cc5a9d9abff0bc9050f7288a07f80'; 
         
         const imgbbRes = await fetch(`https://api.imgbb.com/1/upload?key=${apiKey}`, {
           method: 'POST',
