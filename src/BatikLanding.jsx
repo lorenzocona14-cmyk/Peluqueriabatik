@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom'; // Importamos Link para la redirección
+import { Link } from 'react-router-dom';
 import { collection, addDoc, query, where, getDocs } from "firebase/firestore";
 import { db } from './firebase'; 
 
@@ -12,7 +12,10 @@ const BatikLanding = () => {
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   
-  // Agregamos los campos de usuario a los estados de la reserva
+  // ESTADO NUEVO: Guardará los servicios traídos desde Firebase
+  const [dbServices, setDbServices] = useState([]);
+  const [loadingServices, setLoadingServices] = useState(true);
+
   const [bookingData, setBookingData] = useState({
     service: '',
     stylist: '',
@@ -22,14 +25,6 @@ const BatikLanding = () => {
     clientPhone: '',
     clientEmail: ''
   });
-
-  const services = [
-    { id: 1, name: 'Corte de pelo (Hombre)', price: 13000 },
-    { id: 2, name: 'Corte Premium', price: 15000 },
-    { id: 3, name: 'Corte con Barba', price: 15000 },
-    { id: 4, name: 'Corte de pelo (Mujer)', price: 15000 },
-    { id: 5, name: 'Lavado y Corte (Mujer)', price: 17000 }
-  ];
   
   const stylists = [
     { name: 'Eze', photoPlaceholder: 'Foto Eze' },
@@ -45,6 +40,26 @@ const BatikLanding = () => {
   const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
   const daysOfWeek = ["Do", "Lu", "Ma", "Mi", "Ju", "Vi", "Sa"];
 
+  // 1. EFECTO PARA TRAER LOS SERVICIOS DE FIREBASE AL CARGAR LA PÁGINA
+  useEffect(() => {
+    const fetchServices = async () => {
+      try {
+        const querySnapshot = await getDocs(collection(db, "servicios"));
+        const servs = [];
+        querySnapshot.forEach((doc) => {
+          servs.push({ id: doc.id, ...doc.data() });
+        });
+        setDbServices(servs);
+      } catch (error) {
+        console.error("Error al cargar los servicios:", error);
+      } finally {
+        setLoadingServices(false);
+      }
+    };
+    fetchServices();
+  }, []);
+
+  // 2. EFECTO PARA TRAER HORARIOS OCUPADOS
   useEffect(() => {
     const fetchOccupiedTimes = async () => {
       if (bookingData.date && bookingData.stylist) {
@@ -72,7 +87,6 @@ const BatikLanding = () => {
   const handleConfirmBooking = async () => {
     setLoading(true);
     try {
-      // 1. Guardar en Firebase incluyendo los datos del cliente
       await addDoc(collection(db, "turnos"), {
         service: bookingData.service,
         stylist: bookingData.stylist,
@@ -81,11 +95,10 @@ const BatikLanding = () => {
         nombre: bookingData.clientName,
         telefono: bookingData.clientPhone,
         correo: bookingData.clientEmail,
-        origen: 'Web', // Para diferenciarlo de los que se agreguen manual
+        origen: 'Web',
         createdAt: new Date()
       });
 
-      // 2. Enviar datos completos al Webhook de n8n
       const N8N_WEBHOOK_URL = 'TU_TEST_URL_DE_N8N_AQUI'; 
       await fetch(N8N_WEBHOOK_URL, {
         method: 'POST',
@@ -116,7 +129,8 @@ const BatikLanding = () => {
     setLoading(false);
   };
 
-  const selectedServiceObj = services.find(s => s.name === bookingData.service);
+  // Buscar el objeto del servicio seleccionado (ahora desde dbServices)
+  const selectedServiceObj = dbServices.find(s => s.name === bookingData.service);
 
   // --- LÓGICA DEL CALENDARIO ---
   const handlePrevMonth = () => {
@@ -187,6 +201,7 @@ const BatikLanding = () => {
           <div className="hidden md:flex gap-8 text-sm font-medium text-neutral-400">
             <a href="#home" className="hover:text-white transition">Home</a>
             <a href="#turnos" className="hover:text-white transition">Turnos</a>
+            <a href="#servicios-lista" className="hover:text-white transition">Servicios</a>
             <a href="#contacto" className="hover:text-white transition">Contacto</a>
           </div>
         </div>
@@ -251,16 +266,22 @@ const BatikLanding = () => {
 
                 <div>
                   <label className="block text-sm font-medium text-neutral-400 mb-3">Servicio:</label>
-                  <select 
-                    className="w-full p-4 bg-neutral-900 border border-neutral-700 rounded-lg text-neutral-100 focus:outline-none focus:border-neutral-500"
-                    value={bookingData.service}
-                    onChange={(e) => setBookingData({...bookingData, service: e.target.value})}
-                  >
-                    <option value="">Selecciona el servicio</option>
-                    {services.map(svc => (
-                      <option key={svc.id} value={svc.name}>{svc.name}</option>
-                    ))}
-                  </select>
+                  {loadingServices ? (
+                    <div className="w-full p-4 bg-neutral-900 border border-neutral-700 rounded-lg text-neutral-500 text-center">
+                      Cargando servicios disponibles...
+                    </div>
+                  ) : (
+                    <select 
+                      className="w-full p-4 bg-neutral-900 border border-neutral-700 rounded-lg text-neutral-100 focus:outline-none focus:border-neutral-500"
+                      value={bookingData.service}
+                      onChange={(e) => setBookingData({...bookingData, service: e.target.value})}
+                    >
+                      <option value="">Selecciona el servicio</option>
+                      {dbServices.map(svc => (
+                        <option key={svc.id} value={svc.name}>{svc.name}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
 
                 <div className="mt-8 flex justify-between items-center pt-6 border-t border-neutral-700">
@@ -364,7 +385,6 @@ const BatikLanding = () => {
               <div className="animate-fade-in space-y-6">
                 <h3 className="text-xl font-medium text-neutral-200">Tus Datos Personales</h3>
                 
-                {/* Formulario de contacto requerido al terminar el turno */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-neutral-900 p-6 rounded-lg border border-neutral-700">
                   <div className="sm:col-span-2">
                     <label className="block text-xs font-medium text-neutral-400 mb-2">Nombre Completo *</label>
@@ -444,6 +464,65 @@ const BatikLanding = () => {
         </div>
       </section>
 
+      {/* NUEVA SECCIÓN: CATÁLOGO DE SERVICIOS */}
+      <section id="servicios-lista" className="py-20 px-6 max-w-6xl mx-auto border-t border-neutral-800">
+        <div className="text-center mb-16">
+          <h2 className="text-4xl font-black tracking-widest text-neutral-100 uppercase">Nuestros Servicios</h2>
+          <p className="text-neutral-400 mt-4 text-lg">Elegí tu estilo en Batik</p>
+        </div>
+
+        {loadingServices ? (
+          <div className="text-center text-neutral-500 py-10">Cargando catálogo de servicios...</div>
+        ) : dbServices.length === 0 ? (
+          <div className="text-center text-neutral-500 py-10">Aún no hay servicios disponibles.</div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {dbServices.map(svc => (
+              <div key={svc.id} className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden flex flex-col hover:border-neutral-600 transition shadow-lg group">
+                
+                {/* Imagen del servicio */}
+                {svc.image ? (
+                  <div className="h-56 w-full overflow-hidden relative">
+                    <img src={svc.image} alt={svc.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-neutral-900 to-transparent"></div>
+                  </div>
+                ) : (
+                  <div className="h-56 w-full bg-neutral-950 flex items-center justify-center border-b border-neutral-800">
+                    <span className="text-neutral-600 text-sm uppercase tracking-widest font-bold">Batik</span>
+                  </div>
+                )}
+                
+                {/* Info del servicio */}
+                <div className="p-6 flex flex-col flex-1 relative -mt-8">
+                  <div className="flex justify-between items-start mb-3 bg-neutral-900 pt-2 rounded-t-lg">
+                    <h3 className="text-xl font-bold text-neutral-100 pr-4">{svc.name}</h3>
+                    <span className="text-xl font-black text-white bg-neutral-800 px-3 py-1 rounded-lg border border-neutral-700">
+                      ${svc.price.toLocaleString('es-AR')}
+                    </span>
+                  </div>
+                  
+                  <p className="text-neutral-400 text-sm flex-1 mb-8 leading-relaxed">
+                    {svc.description || 'Consulta más detalles de este servicio en nuestro local.'}
+                  </p>
+                  
+                  {/* Botón de agenda que pre-selecciona el servicio y lleva arriba */}
+                  <a 
+                    href="#turnos" 
+                    onClick={() => { 
+                      setBookingData({...bookingData, service: svc.name}); 
+                      setStep(1); 
+                    }} 
+                    className="block text-center w-full bg-neutral-800 border border-neutral-700 text-neutral-200 font-bold py-3 rounded-lg hover:bg-neutral-200 hover:text-neutral-900 transition mt-auto"
+                  >
+                    Agendar este corte
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
       {/* FOOTER */}
       <footer id="contacto" className="bg-neutral-950 pt-16 pb-8 border-t border-neutral-800">
         <div className="max-w-4xl mx-auto px-6 text-center">
@@ -467,7 +546,6 @@ const BatikLanding = () => {
             </a>
           </div>
 
-          {/* BOTÓN AL DASHBOARD DE ADMINISTRACIÓN */}
           <div className="mb-6">
             <Link 
               to="/admin" 
