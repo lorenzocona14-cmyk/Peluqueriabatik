@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { collection, addDoc, query, where, getDocs } from "firebase/firestore";
 import { db } from './firebase'; 
 
+const defaultTimes = ['10:00', '10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30', '18:00'];
+
 const BatikLanding = () => {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -12,9 +14,8 @@ const BatikLanding = () => {
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   
-  // ESTADOS QUE CONSUMEN FIREBASE
   const [dbServices, setDbServices] = useState([]);
-  const [dbHorarios, setDbHorarios] = useState([]); // Ahora es una lista de objetos {stylist, time}
+  const [horariosConfig, setHorariosConfig] = useState([]); 
   const [blockedDates, setBlockedDates] = useState([]);
   const [loadingConfig, setLoadingConfig] = useState(true);
 
@@ -31,7 +32,7 @@ const BatikLanding = () => {
   const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
   const daysOfWeek = ["Do", "Lu", "Ma", "Mi", "Ju", "Vi", "Sa"];
 
-  // 1. CARGAR CONFIGURACIÓN GLOBAL (Servicios, Horarios, Fechas Bloqueadas)
+  // 1. CARGAR CONFIGURACIÓN GLOBAL
   useEffect(() => {
     const fetchGlobalConfig = async () => {
       try {
@@ -39,13 +40,10 @@ const BatikLanding = () => {
         setDbServices(servSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         
         const horSnap = await getDocs(collection(db, "horarios"));
-        const timesArr = horSnap.docs.map(doc => doc.data());
-        timesArr.sort((a, b) => a.time.localeCompare(b.time)); // Ordenar por hora
-        setDbHorarios(timesArr);
+        setHorariosConfig(horSnap.docs.map(doc => doc.data()));
 
         const blockSnap = await getDocs(collection(db, "fechas_bloqueadas"));
         setBlockedDates(blockSnap.docs.map(doc => doc.data()));
-
       } catch (error) {
         console.error("Error al cargar config:", error);
       } finally {
@@ -68,6 +66,19 @@ const BatikLanding = () => {
     };
     fetchOccupiedTimes();
   }, [bookingData.date, bookingData.stylist]);
+
+  // 3. EFECTO PANTALLA DE ÉXITO (Paso 4)
+  useEffect(() => {
+    if (step === 4) {
+      const timer = setTimeout(() => {
+        setStep(1);
+        setBookingData({ service: '', stylist: '', date: '', time: '', clientName: '', clientPhone: '', clientEmail: '' });
+        window.location.hash = '#home';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [step]);
 
   const handleNext = () => setStep(step + 1);
   const handleBack = () => setStep(step - 1);
@@ -92,9 +103,7 @@ const BatikLanding = () => {
         })
       });
 
-      alert('¡Turno confirmado con éxito!');
-      setStep(1);
-      setBookingData({ service: '', stylist: '', date: '', time: '', clientName: '', clientPhone: '', clientEmail: '' });
+      setStep(4); // Llevamos a la pantalla de éxito
     } catch (error) {
       alert('Hubo un error al procesar el turno. Intentá de nuevo.');
     }
@@ -103,10 +112,20 @@ const BatikLanding = () => {
 
   const selectedServiceObj = dbServices.find(s => s.name === bookingData.service);
 
-  // Filtrar los horarios que correspondan SÓLO al peluquero elegido
-  const horariosDisponibles = dbHorarios
-    .filter(h => h.stylist === bookingData.stylist)
-    .map(h => h.time);
+  // Filtrar los horarios combinando por defecto y excepciones
+  const getConfigForStylist = () => {
+    const config = horariosConfig.filter(h => h.stylist === bookingData.stylist);
+    const blocked = config.filter(h => h.type === 'blocked').map(h => h.time);
+    const added = config.filter(h => h.type === 'added').map(h => h.time);
+    
+    // Lista final = (Fijos + Agregados) quitando los Bloqueados
+    const activeTimes = Array.from(new Set([...defaultTimes, ...added]))
+      .filter(t => !blocked.includes(t))
+      .sort();
+      
+    return activeTimes;
+  };
+  const horariosDisponibles = getConfigForStylist();
 
   const renderCalendarDays = () => {
     const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
@@ -124,9 +143,8 @@ const BatikLanding = () => {
       
       const isPast = dateObj < todayMidnight;
       const isBeyondMax = dateObj > maxDate;
-      const isClosed = dateObj.getDay() === 0 || dateObj.getDay() === 1; // Domingos y Lunes cerrados
+      const isClosed = dateObj.getDay() === 0 || dateObj.getDay() === 1; 
       
-      // CHEQUEAR BLOQUEO INDIVIDUAL O TOTAL
       const isBlocked = blockedDates.some(b => b.date === dateStr && (b.stylist === 'Todos' || b.stylist === bookingData.stylist));
       
       const isSelectable = !isPast && !isBeyondMax && !isClosed && !isBlocked;
@@ -173,11 +191,13 @@ const BatikLanding = () => {
         <div className="bg-neutral-800 border border-neutral-700 rounded-lg shadow-xl overflow-hidden">
           <div className="bg-neutral-950 p-6 border-b border-neutral-700"><h2 className="text-2xl font-bold tracking-widest text-center text-neutral-100 uppercase">Turnos</h2></div>
           
-          <div className="flex border-b border-neutral-700 text-sm font-medium">
-            <div className={`flex-1 text-center py-4 ${step === 1 ? 'bg-neutral-700 text-white' : 'text-neutral-400'}`}>1. Servicio</div>
-            <div className={`flex-1 text-center py-4 border-l border-neutral-700 ${step === 2 ? 'bg-neutral-700 text-white' : 'text-neutral-400'}`}>2. Fecha y Hora</div>
-            <div className={`flex-1 text-center py-4 border-l border-neutral-700 ${step === 3 ? 'bg-neutral-700 text-white' : 'text-neutral-400'}`}>3. Datos</div>
-          </div>
+          {step < 4 && (
+            <div className="flex border-b border-neutral-700 text-sm font-medium">
+              <div className={`flex-1 text-center py-4 ${step === 1 ? 'bg-neutral-700 text-white' : 'text-neutral-400'}`}>1. Servicio</div>
+              <div className={`flex-1 text-center py-4 border-l border-neutral-700 ${step === 2 ? 'bg-neutral-700 text-white' : 'text-neutral-400'}`}>2. Fecha y Hora</div>
+              <div className={`flex-1 text-center py-4 border-l border-neutral-700 ${step === 3 ? 'bg-neutral-700 text-white' : 'text-neutral-400'}`}>3. Datos</div>
+            </div>
+          )}
 
           <div className="p-8">
             {step === 1 && (
@@ -238,7 +258,7 @@ const BatikLanding = () => {
                     ) : (
                       <div className="bg-neutral-900 border border-neutral-700 rounded-lg p-4 h-[280px]">
                         <div className="grid grid-cols-2 gap-3 h-full overflow-y-auto pr-2 custom-scrollbar content-start">
-                          {horariosDisponibles.length === 0 ? <span className="col-span-2 text-center text-neutral-500 mt-4 text-xs font-bold">No hay horarios registrados para este profesional.</span> : null}
+                          {horariosDisponibles.length === 0 ? <span className="col-span-2 text-center text-neutral-500 mt-4 text-xs font-bold">Sin horarios disponibles hoy.</span> : null}
                           {horariosDisponibles.map(time => {
                             const isOccupied = occupiedTimes.includes(time);
                             const isSelected = bookingData.time === time;
@@ -288,6 +308,24 @@ const BatikLanding = () => {
                 </div>
               </div>
             )}
+
+            {/* PASO 4: PANTALLA DE ÉXITO */}
+            {step === 4 && (
+              <div className="animate-fade-in flex flex-col items-center text-center py-10">
+                <div className="w-24 h-24 bg-green-500 rounded-full flex items-center justify-center mb-6 shadow-[0_0_20px_rgba(34,197,94,0.4)]">
+                  <svg className="w-12 h-12 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
+                </div>
+                <h2 className="text-4xl font-black text-white mb-3">¡Turno Confirmado!</h2>
+                <p className="text-neutral-300 mb-10 text-lg max-w-sm leading-relaxed">
+                  Te esperamos el <strong className="text-white">{bookingData.date.split('-').reverse().join('/')}</strong> a las <strong className="text-white">{bookingData.time} hs</strong> con <strong className="text-white">{bookingData.stylist}</strong>.
+                </p>
+                <div className="flex items-center gap-3 text-neutral-500 text-sm animate-pulse">
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                  Redirigiendo a la página principal...
+                </div>
+              </div>
+            )}
+
           </div>
         </div>
       </section>
