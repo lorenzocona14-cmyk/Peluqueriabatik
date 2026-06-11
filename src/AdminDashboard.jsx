@@ -4,16 +4,9 @@ import { db } from './firebase';
 
 const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('inicio');
-
-  // Estados reales para Firebase
   const [servicios, setServicios] = useState([]);
-  const [nuevoServicio, setNuevoServicio] = useState({ name: '', price: '' });
+  const [nuevoServicio, setNuevoServicio] = useState({ name: '', price: '', description: '', image: '' });
   const [loadingServicios, setLoadingServicios] = useState(false);
-
-  // Datos de prueba temporales solo para las otras pestañas
-  const [clientes, setClientes] = useState([
-    { id: 1, nombre: 'Juan Pérez', telefono: '2615551234', servicio: 'Corte Premium', peluquero: 'Eze', origen: 'Web', fecha: '2026-06-15' }
-  ]);
 
   // --- LÓGICA DE SERVICIOS (FIREBASE) ---
   const fetchServicios = async () => {
@@ -31,7 +24,6 @@ const AdminDashboard = () => {
     setLoadingServicios(false);
   };
 
-  // Cargar servicios cuando el usuario entra a la pestaña de servicios
   useEffect(() => {
     if (activeTab === 'servicios') {
       fetchServicios();
@@ -45,10 +37,12 @@ const AdminDashboard = () => {
     try {
       await addDoc(collection(db, "servicios"), {
         name: nuevoServicio.name,
-        price: Number(nuevoServicio.price)
+        price: Number(nuevoServicio.price),
+        description: nuevoServicio.description,
+        image: nuevoServicio.image // Guardamos la URL que peguen de Imgur
       });
-      setNuevoServicio({ name: '', price: '' });
-      fetchServicios(); // Recargar la lista
+      setNuevoServicio({ name: '', price: '', description: '', image: '' });
+      fetchServicios();
     } catch (error) {
       console.error("Error al agregar:", error);
       alert("Hubo un error al guardar el servicio.");
@@ -59,7 +53,7 @@ const AdminDashboard = () => {
     if (window.confirm("¿Seguro que querés eliminar este servicio?")) {
       try {
         await deleteDoc(doc(db, "servicios", id));
-        fetchServicios(); // Recargar la lista
+        fetchServicios();
       } catch (error) {
         console.error("Error al eliminar:", error);
       }
@@ -177,40 +171,40 @@ const AdminDashboard = () => {
         );
 
       case 'servicios':
-        return (
-          <div className="animate-fade-in space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-bold text-neutral-100">Servicios y Precios</h2>
-            </div>
+    return (
+      <div className="animate-fade-in space-y-6">
+        <div className="flex justify-between items-center">
+          <h2 className="text-2xl font-bold text-neutral-100">Servicios y Precios</h2>
+        </div>
 
-            {/* Formulario para agregar un servicio nuevo */}
-            <form onSubmit={handleAddServicio} className="bg-neutral-900 p-6 rounded-lg border border-neutral-800 flex flex-col md:flex-row gap-4 items-end">
-              <div className="flex-1">
-                <label className="block text-sm font-medium text-neutral-400 mb-2">Nombre del Servicio</label>
-                <input 
-                  type="text" 
-                  placeholder="Ej: Corte Clásico"
-                  value={nuevoServicio.name}
-                  onChange={(e) => setNuevoServicio({...nuevoServicio, name: e.target.value})}
-                  className="w-full p-3 bg-neutral-950 border border-neutral-700 rounded text-neutral-100 focus:outline-none focus:border-neutral-500"
-                  required
-                />
-              </div>
-              <div className="flex-1">
-                <label className="block text-sm font-medium text-neutral-400 mb-2">Precio ($)</label>
-                <input 
-                  type="number" 
-                  placeholder="Ej: 15000"
-                  value={nuevoServicio.price}
-                  onChange={(e) => setNuevoServicio({...nuevoServicio, price: e.target.value})}
-                  className="w-full p-3 bg-neutral-950 border border-neutral-700 rounded text-neutral-100 focus:outline-none focus:border-neutral-500"
-                  required
-                />
-              </div>
-              <button type="submit" className="bg-neutral-100 text-neutral-900 px-6 py-3 rounded-lg font-bold hover:bg-white transition w-full md:w-auto">
-                + Agregar Servicio
-              </button>
-            </form>
+        {/* Formulario simplificado para URL de Imgur */}
+        <form onSubmit={handleAddServicio} className="bg-neutral-900 p-6 rounded-lg border border-neutral-800 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <input 
+              type="text" placeholder="Nombre del Servicio *"
+              value={nuevoServicio.name} onChange={(e) => setNuevoServicio({...nuevoServicio, name: e.target.value})}
+              className="w-full p-3 bg-neutral-950 border border-neutral-700 rounded text-neutral-100" required
+            />
+            <input 
+              type="number" placeholder="Precio ($) *"
+              value={nuevoServicio.price} onChange={(e) => setNuevoServicio({...nuevoServicio, price: e.target.value})}
+              className="w-full p-3 bg-neutral-950 border border-neutral-700 rounded text-neutral-100" required
+            />
+          </div>
+          <input 
+            type="url" placeholder="Pegar URL de la imagen (desde Imgur)"
+            value={nuevoServicio.image} onChange={(e) => setNuevoServicio({...nuevoServicio, image: e.target.value})}
+            className="w-full p-3 bg-neutral-950 border border-neutral-700 rounded text-neutral-100"
+          />
+          <textarea 
+            placeholder="Descripción del servicio..."
+            value={nuevoServicio.description} onChange={(e) => setNuevoServicio({...nuevoServicio, description: e.target.value})}
+            className="w-full p-3 bg-neutral-950 border border-neutral-700 rounded text-neutral-100 min-h-[80px]"
+          />
+          <button type="submit" className="bg-neutral-100 text-neutral-900 px-8 py-3 rounded-lg font-bold hover:bg-white transition w-full">
+            + Agregar Servicio
+          </button>
+        </form>
 
             {/* Lista de servicios desde Firebase */}
             <div className="grid gap-4">
