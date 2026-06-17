@@ -2,20 +2,34 @@ import React, { useState, useEffect } from 'react';
 import { collection, getDocs, addDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 import { db } from './firebase';
 
-// Los horarios fijos que siempre tienen que estar
 const defaultTimes = ['10:00', '10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30', '18:00'];
 
 const AdminDashboard = () => {
-  const [activeTab, setActiveTab] = useState('inicio');
+  // --- SISTEMA DE AUTENTICACIÓN ---
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [login, setLogin] = useState({ user: '', pass: '' });
 
-  // Estados Globales
+  const handleLogin = (e) => {
+    e.preventDefault();
+    if (login.user === 'admin' && login.pass === 'admin') {
+      setIsAuthenticated(true);
+    } else {
+      alert('Usuario o contraseña incorrectos.');
+    }
+  };
+
+  // --- ESTADOS DEL DASHBOARD ---
+  const [activeTab, setActiveTab] = useState('inicio');
   const [servicios, setServicios] = useState([]);
   const [turnos, setTurnos] = useState([]);
-  const [horariosConfig, setHorariosConfig] = useState([]); // Guarda bloqueados y agregados
+  const [horariosConfig, setHorariosConfig] = useState([]); 
   const [fechasBloqueadas, setFechasBloqueadas] = useState([]);
   const [loading, setLoading] = useState(false);
+  
+  // Selector de fecha específico para la pestaña de Horarios
+  const [selectedHorarioDate, setSelectedHorarioDate] = useState(new Date().toISOString().split('T')[0]);
 
-  // Estados de Formularios y Modos
+  // Estados de Formularios y Modos de Edición
   const [nuevoServicio, setNuevoServicio] = useState({ name: '', price: '', description: '' });
   const [imageFile, setImageFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -24,39 +38,40 @@ const AdminDashboard = () => {
   const [fechaMode, setFechaMode] = useState({ Eze: 'bloquear', Nico: 'bloquear' });
   const [horaMode, setHoraMode] = useState({ Eze: 'bloquear', Nico: 'bloquear' });
 
-  // Calendario Admin
+  // Calendario Administrativo
   const today = new Date();
   const [dashMonth, setDashMonth] = useState(today.getMonth());
   const [dashYear, setDashYear] = useState(today.getFullYear());
   const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
   const daysOfWeek = ["Do", "Lu", "Ma", "Mi", "Ju", "Vi", "Sa"];
 
-  // --- CARGA DE DATOS DESDE FIREBASE ---
+  // --- OBTENCIÓN DE DATOS (FIREBASE) ---
   const fetchData = async () => {
     setLoading(true);
     try {
-      const servSnap = await getDocs(collection(db, "servicios"));
+      const [servSnap, turnosSnap, horSnap, fechSnap] = await Promise.all([
+        getDocs(collection(db, "servicios")),
+        getDocs(query(collection(db, "turnos"), orderBy("createdAt", "desc"))),
+        getDocs(collection(db, "horarios")),
+        getDocs(collection(db, "fechas_bloqueadas"))
+      ]);
       setServicios(servSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-
-      const turnosSnap = await getDocs(query(collection(db, "turnos"), orderBy("createdAt", "desc")));
       setTurnos(turnosSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-
-      const horSnap = await getDocs(collection(db, "horarios"));
       setHorariosConfig(horSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-
-      const fechSnap = await getDocs(collection(db, "fechas_bloqueadas"));
       setFechasBloqueadas(fechSnap.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch (error) {
-      console.error("Error cargando datos:", error);
+      console.error("Error sincronizando base de datos:", error);
     }
     setLoading(false);
   };
 
   useEffect(() => {
-    fetchData();
-  }, [activeTab]);
+    if (isAuthenticated) {
+      fetchData();
+    }
+  }, [activeTab, isAuthenticated]);
 
-  // --- LÓGICA DE TURNOS Y CLIENTES ---
+  // --- GESTIÓN DE TURNOS WEB ---
   const handleCancelarTurno = async (turno) => {
     if (window.confirm(`¿Querés cancelar el turno de ${turno.nombre} y avisarle por WhatsApp?`)) {
       try {
@@ -66,54 +81,55 @@ const AdminDashboard = () => {
         const mensaje = `Hola ${turno.nombre}, te escribimos de la peluquería Batik. Lamentablemente tuvimos un inconveniente y necesitamos reprogramar o cancelar tu turno del día ${turno.date.split('-').reverse().join('/')} a las ${turno.time} con ${turno.stylist}. Avisanos cómo querés seguir. ¡Disculpas!`;
         window.open(`https://wa.me/549${telefonoLimpio}?text=${encodeURIComponent(mensaje)}`, '_blank');
       } catch (error) {
-        console.error("Error al cancelar:", error);
+        console.error("Error al cancelar turno:", error);
       }
     }
   };
 
+  // --- GESTIÓN DE CLIENTES MANUALES (LOCAL) ---
   const handleAgregarClienteManual = async (e) => {
     e.preventDefault();
     if (!nuevoCliente.nombre || !nuevoCliente.servicio) return;
     try {
-      const todayStr = new Date().toISOString().split('T')[0];
       await addDoc(collection(db, "turnos"), {
-        nombre: nuevoCliente.nombre, telefono: nuevoCliente.telefono || 'Local',
-        service: nuevoCliente.servicio, stylist: nuevoCliente.peluquero,
-        date: todayStr, time: 'Sin Turno', origen: 'Local', createdAt: new Date()
+        nombre: nuevoCliente.nombre,
+        telefono: nuevoCliente.telefono || 'Atención Local',
+        service: nuevoCliente.servicio,
+        stylist: nuevoCliente.peluquero,
+        date: new Date().toISOString().split('T')[0],
+        time: 'Atención Local',
+        origen: 'Local',
+        createdAt: new Date()
       });
       setNuevoCliente({ nombre: '', telefono: '', servicio: '', peluquero: 'Eze' });
       fetchData();
-      alert("Cliente local registrado con éxito.");
+      alert("Cliente guardado en el historial con éxito.");
     } catch (error) {
-      console.error("Error registrando cliente:", error);
+      console.error("Error guardando cliente manual:", error);
     }
   };
 
-  // --- LÓGICA DE FECHAS ---
+  // --- GESTIÓN DE FECHAS (BLOQUEO COMPLETO POR DÍA) ---
   const handleDateClick = async (dateStr, stylist) => {
     const mode = fechaMode[stylist];
     const isBlockedObj = fechasBloqueadas.find(f => f.date === dateStr && f.stylist === stylist);
 
     try {
-      if (mode === 'bloquear') {
-        if (!isBlockedObj) {
-          await addDoc(collection(db, "fechas_bloqueadas"), { date: dateStr, stylist });
-          fetchData();
-        }
-      } else if (mode === 'agregar') { 
-        if (isBlockedObj) {
-          await deleteDoc(doc(db, "fechas_bloqueadas", isBlockedObj.id));
-          fetchData();
-        }
+      if (mode === 'bloquear' && !isBlockedObj) {
+        await addDoc(collection(db, "fechas_bloqueadas"), { date: dateStr, stylist });
+        fetchData();
+      } else if (mode === 'agregar' && isBlockedObj) {
+        await deleteDoc(doc(db, "fechas_bloqueadas", isBlockedObj.id));
+        fetchData();
       }
     } catch (error) {
-      console.error("Error modificando fecha:", error);
+      console.error("Error al modificar fecha:", error);
     }
   };
 
-  // --- LÓGICA DE HORARIOS ---
+  // --- GESTIÓN DE HORARIOS FILTRADOS POR CALENDARIO ---
   const handleHoraAction = async (timeStr, stylist) => {
-    const config = horariosConfig.filter(h => h.stylist === stylist);
+    const config = horariosConfig.filter(h => h.stylist === stylist && h.date === selectedHorarioDate);
     const isDefault = defaultTimes.includes(timeStr);
     const blockedDoc = config.find(h => h.type === 'blocked' && h.time === timeStr);
     const addedDoc = config.find(h => h.type === 'added' && h.time === timeStr);
@@ -122,14 +138,12 @@ const AdminDashboard = () => {
     try {
       if (mode === 'bloquear') {
         if (blockedDoc) {
-          // Si estaba bloqueado, lo desbloqueamos
           await deleteDoc(doc(db, "horarios", blockedDoc.id));
         } else {
-          // Si estaba activo, lo bloqueamos (o lo eliminamos si era extra)
           if (isDefault) {
-            await addDoc(collection(db, "horarios"), { time: timeStr, stylist, type: 'blocked' });
+            await addDoc(collection(db, "horarios"), { time: timeStr, stylist, type: 'blocked', date: selectedHorarioDate });
           } else if (addedDoc) {
-            if (window.confirm('¿Eliminar este horario extra permanentemente?')) {
+            if (window.confirm('¿Eliminar este horario extra permanentemente para este día?')) {
               await deleteDoc(doc(db, "horarios", addedDoc.id));
             }
           }
@@ -138,35 +152,33 @@ const AdminDashboard = () => {
       } else if (mode === 'modificar') {
         const newTime = window.prompt(`Modificar horario de las ${timeStr} a:`, timeStr);
         if (newTime && newTime !== timeStr) {
-          // Bloquear el viejo (o eliminar si es extra)
           if (isDefault && !blockedDoc) {
-            await addDoc(collection(db, "horarios"), { time: timeStr, stylist, type: 'blocked' });
+            await addDoc(collection(db, "horarios"), { time: timeStr, stylist, type: 'blocked', date: selectedHorarioDate });
           } else if (addedDoc) {
             await deleteDoc(doc(db, "horarios", addedDoc.id));
           }
-          // Agregar el nuevo
-          await addDoc(collection(db, "horarios"), { time: newTime, stylist, type: 'added' });
+          await addDoc(collection(db, "horarios"), { time: newTime, stylist, type: 'added', date: selectedHorarioDate });
           fetchData();
         }
       }
     } catch (error) {
-      console.error("Error accionando horario:", error);
+      console.error("Error al procesar acción sobre horario:", error);
     }
   };
 
-  const handleAgregarSlot = async (stylist) => {
-    const newTime = window.prompt(`Ingresar nuevo horario para ${stylist} (ej: 13:45):`, "13:45");
+  const handleAgregarSlot = async (stylist, recommendedTime = "09:00") => {
+    const newTime = window.prompt(`Ingresar nuevo horario para ${stylist} en la fecha seleccionada:`, recommendedTime);
     if (newTime) {
       try {
-        await addDoc(collection(db, "horarios"), { time: newTime, stylist, type: 'added' });
+        await addDoc(collection(db, "horarios"), { time: newTime, stylist, type: 'added', date: selectedHorarioDate });
         fetchData();
       } catch (error) {
-        console.error("Error agregando horario:", error);
+        console.error("Error al agregar franja horaria:", error);
       }
     }
   };
 
-  // --- LÓGICA DE SERVICIOS ---
+  // --- GESTIÓN DE CATÁLOGO DE SERVICIOS ---
   const handleAddServicio = async (e) => {
     e.preventDefault();
     if (!nuevoServicio.name || !nuevoServicio.price) return;
@@ -190,7 +202,7 @@ const AdminDashboard = () => {
       document.getElementById('imageInput').value = ''; 
       fetchData();
     } catch (error) {
-      console.error("Error:", error);
+      console.error("Error al subir catálogo:", error);
     }
     setIsUploading(false);
   };
@@ -202,7 +214,7 @@ const AdminDashboard = () => {
     }
   };
 
-  // --- RENDERIZADO COMPONENTES ---
+  // --- AUXILIAR RENDERIZADO CALENDARIO ---
   const renderAdminCalendar = (stylist) => {
     const daysInMonth = new Date(dashYear, dashMonth + 1, 0).getDate();
     const firstDayIndex = new Date(dashYear, dashMonth, 1).getDay();
@@ -216,7 +228,7 @@ const AdminDashboard = () => {
       const dateStr = `${dashYear}-${String(dashMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       
       const isPast = dateObj < todayMidnight;
-      const isClosed = dateObj.getDay() === 0 || dateObj.getDay() === 1; // Dom y Lun
+      const isClosed = dateObj.getDay() === 0 || dateObj.getDay() === 1; 
       const isBlocked = fechasBloqueadas.some(f => f.date === dateStr && f.stylist === stylist);
 
       let btnClass = "bg-white border border-gray-200 text-gray-800 hover:bg-gray-100";
@@ -246,6 +258,7 @@ const AdminDashboard = () => {
     );
   };
 
+  // --- CONTROLADOR DE PESTAÑAS (VISTAS) ---
   const renderContent = () => {
     if (loading && activeTab !== 'servicios') return <div className="text-gray-500 py-10 text-center font-medium">Sincronizando con la base de datos...</div>;
 
@@ -387,10 +400,27 @@ const AdminDashboard = () => {
       case 'horarios':
         return (
           <div className="animate-fade-in space-y-6">
-            <h2 className="text-3xl font-black text-gray-900 tracking-tight">Gestión de Horarios por Peluquero</h2>
+            <h2 className="text-3xl font-black text-gray-900 tracking-tight">Gestión de Horarios por Calendario</h2>
+            
+            {/* Selector global de Fecha para la grilla horaria */}
+            <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Seleccionar Fecha para configurar:</label>
+                <input 
+                  type="date" 
+                  value={selectedHorarioDate} 
+                  onChange={(e) => setSelectedHorarioDate(e.target.value)} 
+                  className="p-3 bg-gray-50 border border-gray-300 rounded-lg font-bold text-gray-900 focus:ring-2 focus:ring-black outline-none shadow-sm"
+                />
+              </div>
+              <div className="text-sm text-gray-500 bg-gray-50 p-3 rounded-lg border border-gray-100 font-bold">
+                Día seleccionado: <span className="text-red-600">{selectedHorarioDate.split('-').reverse().join('/')}</span>
+              </div>
+            </div>
+
             <div className="grid lg:grid-cols-2 gap-8">
               {['Eze', 'Nico'].map(stylist => {
-                const config = horariosConfig.filter(h => h.stylist === stylist);
+                const config = horariosConfig.filter(h => h.stylist === stylist && h.date === selectedHorarioDate);
                 const blocked = config.filter(h => h.type === 'blocked').map(h => h.time);
                 const added = config.filter(h => h.type === 'added').map(h => h.time);
                 const allTimes = Array.from(new Set([...defaultTimes, ...added])).sort();
@@ -402,17 +432,22 @@ const AdminDashboard = () => {
                     <div className="flex bg-gray-100 rounded-lg p-1 mb-6 text-sm font-bold">
                       <button onClick={() => setHoraMode({...horaMode, [stylist]: 'bloquear'})} className={`flex-1 py-2 rounded-md transition ${horaMode[stylist] === 'bloquear' ? 'bg-white shadow-sm text-red-600' : 'text-gray-500 hover:text-gray-900'}`}>Bloquear</button>
                       <button onClick={() => setHoraMode({...horaMode, [stylist]: 'modificar'})} className={`flex-1 py-2 rounded-md transition ${horaMode[stylist] === 'modificar' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-900'}`}>Modificar</button>
-                      <button onClick={() => handleAgregarSlot(stylist)} className={`flex-1 py-2 rounded-md transition text-gray-500 hover:text-gray-900 hover:bg-gray-200`}>+ Agregar</button>
                     </div>
 
-                    {horaMode[stylist] === 'bloquear' && <p className="text-xs text-red-500 font-bold mb-4">Tocá un horario para tacharlo (no disponible).</p>}
-                    {horaMode[stylist] === 'modificar' && <p className="text-xs text-blue-500 font-bold mb-4">Tocá un horario para editar a qué hora empieza.</p>}
+                    {horaMode[stylist] === 'bloquear' && <p className="text-xs text-red-500 font-bold mb-4">Tocá un horario para inhabilitarlo en esta fecha.</p>}
+                    {horaMode[stylist] === 'modificar' && <p className="text-xs text-blue-500 font-bold mb-4">Tocá un horario para cambiar su inicio en esta fecha.</p>}
 
                     <div className="grid grid-cols-4 sm:grid-cols-5 gap-3">
+                      {/* Botón + a la izquierda (Horarios más temprano) */}
+                      <button onClick={() => handleAgregarSlot(stylist, "09:30")} className="py-3 rounded-lg text-center font-black transition border border-dashed border-gray-400 text-gray-500 hover:text-gray-900 hover:border-gray-900 bg-gray-50 hover:bg-gray-100 flex items-center justify-center">
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 4v16m8-8H4" /></svg>
+                        <span className="text-xs ml-1 font-bold">Temprano</span>
+                      </button>
+
                       {allTimes.map(timeStr => {
                         const isBlocked = blocked.includes(timeStr);
                         let btnClass = isBlocked 
-                          ? "bg-red-50 text-red-500 border-red-200 line-through opacity-60" 
+                          ? "bg-red-50 text-red-500 border-red-200 line-through opacity-60 font-medium" 
                           : "bg-white text-gray-900 border-gray-200 hover:border-gray-400";
 
                         return (
@@ -426,8 +461,8 @@ const AdminDashboard = () => {
                         );
                       })}
                       
-                      {/* Bloque + para agregar extra directo de la grilla */}
-                      <button onClick={() => handleAgregarSlot(stylist)} className="py-3 rounded-lg text-center font-black transition border border-dashed border-gray-400 text-gray-500 hover:text-gray-900 hover:border-gray-900 bg-gray-50 hover:bg-gray-100 flex items-center justify-center">
+                      {/* Botón + a la derecha (Horarios más tarde) */}
+                      <button onClick={() => handleAgregarSlot(stylist, "18:30")} className="py-3 rounded-lg text-center font-black transition border border-dashed border-gray-400 text-gray-500 hover:text-gray-900 hover:border-gray-900 bg-gray-50 hover:bg-gray-100 flex items-center justify-center">
                         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 4v16m8-8H4" /></svg>
                       </button>
                     </div>
@@ -448,7 +483,7 @@ const AdminDashboard = () => {
                 <input type="number" placeholder="Precio ($) *" value={nuevoServicio.price} onChange={(e) => setNuevoServicio({...nuevoServicio, price: e.target.value})} className="w-full p-4 bg-gray-50 border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-black outline-none font-medium" required />
               </div>
               <div className="p-4 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50">
-                <label className="block text-sm font-bold text-gray-700 mb-2">Subir Foto (Obligatorio para que se vea bien)</label>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Subir Foto (Obligatorio)</label>
                 <input id="imageInput" type="file" accept="image/*" onChange={(e) => setImageFile(e.target.files[0])} className="w-full text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-black file:bg-gray-900 file:text-white hover:file:bg-black cursor-pointer" />
               </div>
               <textarea placeholder="Descripción del servicio..." value={nuevoServicio.description} onChange={(e) => setNuevoServicio({...nuevoServicio, description: e.target.value})} className="w-full p-4 bg-gray-50 border border-gray-300 rounded-lg text-gray-900 min-h-[100px] focus:ring-2 focus:ring-black outline-none" />
@@ -481,29 +516,67 @@ const AdminDashboard = () => {
     }
   };
 
+  // --- INTERFAZ DEL LOGIN SEGURO ---
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4 font-sans selection:bg-red-200">
+        <form onSubmit={handleLogin} className="bg-white p-10 rounded-3xl shadow-xl w-full max-w-sm space-y-5 border border-gray-200/60">
+          <div className="text-center">
+            <h2 className="text-3xl font-black tracking-tighter text-gray-900">BATIK ADMIN</h2>
+            <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mt-1">Panel de Control Seguro</p>
+          </div>
+          <div className="space-y-3">
+            <input 
+              type="text" 
+              placeholder="Usuario" 
+              className="w-full p-4 border border-gray-300 rounded-xl bg-gray-50 focus:ring-2 focus:ring-black outline-none font-semibold text-gray-900 transition" 
+              onChange={e => setLogin({...login, user: e.target.value})} 
+              required
+            />
+            <input 
+              type="password" 
+              placeholder="Contraseña" 
+              className="w-full p-4 border border-gray-300 rounded-xl bg-gray-50 focus:ring-2 focus:ring-black outline-none font-semibold text-gray-900 transition" 
+              onChange={e => setLogin({...login, pass: e.target.value})} 
+              required
+            />
+          </div>
+          <button type="submit" className="w-full bg-red-600 text-white py-4 rounded-xl font-black text-lg hover:bg-red-700 transition shadow-lg shadow-red-600/20 tracking-wide">
+            INGRESSAR
+          </button>
+        </form>
+      </div>
+    );
+  }
+
+  // --- INTERFAZ PRINCIPAL DEL DASHBOARD CLARO ---
   return (
-    <div className="min-h-screen bg-gray-50 flex text-gray-900 font-sans">
+    <div className="min-h-screen bg-gray-50 flex text-gray-900 font-sans selection:bg-gray-200">
       <aside className="w-72 bg-white border-r border-gray-200 flex flex-col shrink-0 hidden md:flex shadow-sm z-10">
         <div className="p-8 border-b border-gray-100">
           <h1 className="text-4xl font-black tracking-tighter text-gray-900">BATIK</h1>
           <p className="text-xs text-gray-500 uppercase tracking-widest mt-1 font-bold">Admin Panel</p>
         </div>
-        <nav className="flex-1 p-6 space-y-3 overflow-y-auto">
+        <nav className="flex-1 p-6 space-y-2 overflow-y-auto">
           {[
-            { id: 'inicio', label: '📊 Inicio' },
+            { id: 'inicio', label: '📊 Resumen General' },
             { id: 'turnos', label: '🗓️ Turnos Web' },
-            { id: 'clientes', label: '👥 Clientes y Local' },
-            { id: 'fechas', label: '📅 Calendario' },
-            { id: 'horarios', label: '⏰ Horarios' },
-            { id: 'servicios', label: '✂️ Servicios' },
+            { id: 'clientes', label: '👥 Historial Local' },
+            { id: 'fechas', label: '📅 Bloqueo de Días' },
+            { id: 'horarios', label: '⏰ Horarios por Fecha' },
+            { id: 'servicios', label: '✂️ Catálogo Servicios' },
           ].map(item => (
-            <button key={item.id} onClick={() => setActiveTab(item.id)} className={`w-full text-left px-5 py-4 rounded-xl font-bold transition flex items-center gap-3 ${activeTab === item.id ? 'bg-gray-900 text-white shadow-md' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'}`}>
+            <button 
+              key={item.id} 
+              onClick={() => setActiveTab(item.id)} 
+              className={`w-full text-left px-5 py-4 rounded-xl font-bold transition flex items-center gap-3 ${activeTab === item.id ? 'bg-gray-900 text-white shadow-md' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'}`}
+            >
               {item.label}
             </button>
           ))}
         </nav>
         <div className="p-6 border-t border-gray-100">
-          <a href="/" target="_blank" className="block w-full text-center py-3 text-sm text-gray-700 font-bold bg-gray-100 hover:bg-gray-200 rounded-xl transition">Ir a la Web ↗</a>
+          <a href="/" target="_blank" className="block w-full text-center py-3 text-sm text-gray-700 font-bold bg-gray-100 hover:bg-gray-200 rounded-xl transition border border-gray-200">Ir a la Web ↗</a>
         </div>
       </aside>
 
