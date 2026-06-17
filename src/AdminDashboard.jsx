@@ -5,22 +5,32 @@ import { db } from './firebase';
 const defaultTimes = ['10:00', '10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30', '18:00'];
 
 const AdminDashboard = () => {
-  // --- SISTEMA DE AUTENTICACIÓN ---
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  // --- SISTEMA DE AUTENTICACIÓN CON LOCALSTORAGE ---
+  // Inicializamos el estado leyendo el localStorage
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    return localStorage.getItem('batikAdminAuth') === 'true';
+  });
+  
   const [login, setLogin] = useState({ user: '', pass: '' });
 
   const handleLogin = (e) => {
     e.preventDefault();
     if (login.user === 'admin' && login.pass === 'admin') {
       setIsAuthenticated(true);
+      localStorage.setItem('batikAdminAuth', 'true'); // Guardamos la sesión
     } else {
       alert('Usuario o contraseña incorrectos.');
     }
   };
 
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    localStorage.removeItem('batikAdminAuth'); // Borramos la sesión
+  };
+
   // --- ESTADOS DEL DASHBOARD ---
   const [activeTab, setActiveTab] = useState('inicio');
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); // Estado para menú responsive
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); 
   
   const [servicios, setServicios] = useState([]);
   const [turnos, setTurnos] = useState([]);
@@ -44,7 +54,7 @@ const AdminDashboard = () => {
   const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
   const daysOfWeek = ["Do", "Lu", "Ma", "Mi", "Ju", "Vi", "Sa"];
 
-  // --- OBTENCIÓN DE DATOS ---
+  // --- OBTENCIÓN DE DATOS (FIREBASE) ---
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -65,10 +75,12 @@ const AdminDashboard = () => {
   };
 
   useEffect(() => {
-    if (isAuthenticated) fetchData();
+    if (isAuthenticated) {
+      fetchData();
+    }
   }, [activeTab, isAuthenticated]);
 
-  // --- LÓGICA DE FUNCIONES (Turnos, Clientes, Fechas, Horarios, Servicios) ---
+  // --- LÓGICA DE FUNCIONES ---
   const handleCancelarTurno = async (turno) => {
     if (window.confirm(`¿Querés cancelar el turno de ${turno.nombre} y avisarle por WhatsApp?`)) {
       try {
@@ -517,7 +529,7 @@ const AdminDashboard = () => {
         <div className="fixed inset-0 bg-gray-900/50 z-40 md:hidden backdrop-blur-sm" onClick={() => setIsMobileMenuOpen(false)} />
       )}
 
-      {/* Sidebar (Oculto en mobile salvo que se active) */}
+      {/* Sidebar */}
       <aside className={`w-72 bg-white border-r border-gray-200 flex flex-col shrink-0 fixed inset-y-0 left-0 z-50 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`}>
         <div className="p-8 border-b border-gray-100 hidden md:block">
           <h1 className="text-4xl font-black tracking-tighter text-gray-900">BATIK</h1>
@@ -547,8 +559,15 @@ const AdminDashboard = () => {
             </button>
           ))}
         </nav>
-        <div className="p-6 border-t border-gray-100">
-          <a href="/" target="_blank" className="block w-full text-center py-3 text-sm text-gray-700 font-bold bg-gray-100 hover:bg-gray-200 rounded-xl transition border border-gray-200">Ir a la Web ↗</a>
+        
+        {/* FOOTER DEL SIDEBAR CON BOTÓN DE CERRAR SESIÓN */}
+        <div className="p-6 border-t border-gray-100 space-y-3">
+          <button onClick={handleLogout} className="block w-full text-center py-3 text-sm text-red-600 font-bold bg-red-50 hover:bg-red-100 rounded-xl transition border border-red-100 shadow-sm">
+            Cerrar Sesión
+          </button>
+          <a href="/" target="_blank" className="block w-full text-center py-3 text-sm text-gray-700 font-bold bg-gray-100 hover:bg-gray-200 rounded-xl transition border border-gray-200">
+            Ir a la Web ↗
+          </a>
         </div>
       </aside>
 
