@@ -90,6 +90,25 @@ const BatikLanding = () => {
         nombre: bookingData.clientName, telefono: bookingData.clientPhone, correo: bookingData.clientEmail,
         origen: 'Web', createdAt: new Date()
       });
+
+      // Enviamos los datos al Webhook de n8n
+      const N8N_WEBHOOK_URL = 'https://n8n.66.94.104.64.nip.io/webhook/1549d5cd-43d1-4d18-b2ad-f1c7c61b2c14'; 
+
+      try {
+        await fetch(N8N_WEBHOOK_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            service: bookingData.service,
+            stylist: bookingData.stylist,
+            date: bookingData.date,
+            time: bookingData.time,
+          })
+        });
+      } catch (webhookError) {
+        console.warn('Webhook n8n no disponible:', webhookError);
+      }
+
       setStep(4);
     } catch (error) {
       alert('Hubo un error al procesar el turno. Intentá de nuevo.');
