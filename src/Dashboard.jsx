@@ -6,6 +6,8 @@ import { collection, onSnapshot, addDoc, deleteDoc, doc, serverTimestamp, query,
 const IMGBB_API_KEY = '9d8cc5a9d9abff0bc9050f7288a07f80';
 
 export default function Dashboard({ salonName }) {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loginForm, setLoginForm] = useState({ username: '', password: '' });
   const [activeTab, setActiveTab] = useState('resumen');
   
   // Data States
@@ -164,6 +166,39 @@ export default function Dashboard({ salonName }) {
     }
   };
 
+  const handleLogin = (e) => {
+    e.preventDefault();
+    if (loginForm.username === 'admin' && loginForm.password === 'admin') {
+      setIsAuthenticated(true);
+    } else {
+      alert('Credenciales incorrectas');
+    }
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    setLoginForm({ username: '', password: '' });
+  };
+
+  if (!isAuthenticated) {
+    return (
+      <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: 'var(--ink)' }}>
+        <form onSubmit={handleLogin} style={{ background: 'var(--paper)', padding: '40px', borderRadius: '12px', width: '300px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <h2 style={{ margin: 0, textAlign: 'center', color: 'var(--ink)' }}>Iniciar Sesión</h2>
+          <div>
+            <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px', fontWeight: 'bold' }}>Usuario</label>
+            <input type="text" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--line)' }} value={loginForm.username} onChange={(e) => setLoginForm({ ...loginForm, username: e.target.value })} />
+          </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px', fontWeight: 'bold' }}>Contraseña</label>
+            <input type="password" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--line)' }} value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} />
+          </div>
+          <button type="submit" className="btn-primary gold" style={{ marginTop: '10px' }}>Ingresar</button>
+        </form>
+      </div>
+    );
+  }
+
   const turnosHoy = turnos.filter(t => t.date === todayDate);
   const turnosWeb = turnos.filter(t => t.origen === 'Web');
   const turnosLocales = turnos.filter(t => t.origen === 'Local');
@@ -180,7 +215,9 @@ export default function Dashboard({ salonName }) {
         {/* SIDEBAR */}
         <aside className="sidebar">
           <div className="brand">
-            <p className="word display">{salonName.toUpperCase()}</p>
+            {salonName.split(' ').map((word, i) => (
+              <p key={i} className="word display" style={{ fontSize: '20px', lineHeight: '1.2' }}>{word.toUpperCase()}</p>
+            ))}
           </div>
           <div className="brand-rule"></div>
           <nav>
@@ -213,7 +250,7 @@ export default function Dashboard({ salonName }) {
               Peluqueros
             </div>
           </nav>
-          <div className="sidebar-foot">
+          <div className="sidebar-foot" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div className="user-chip">
               <div className="avatar">AD</div>
               <div>
@@ -221,6 +258,9 @@ export default function Dashboard({ salonName }) {
                 <div className="u-role">Dueño</div>
               </div>
             </div>
+            <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', padding: '5px' }} title="Cerrar sesión">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+            </button>
           </div>
         </aside>
 

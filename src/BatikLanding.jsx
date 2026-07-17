@@ -16,6 +16,7 @@ const BatikLanding = () => {
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   
   const [dbServices, setDbServices] = useState([]);
+  const [dbStylists, setDbStylists] = useState([]);
   const [horariosConfig, setHorariosConfig] = useState([]); 
   const [blockedDates, setBlockedDates] = useState([]);
   const [loadingConfig, setLoadingConfig] = useState(true);
@@ -24,11 +25,6 @@ const BatikLanding = () => {
     service: '', stylist: '', date: '', time: '',
     clientName: '', clientPhone: '', clientEmail: ''
   });
-  
-  const stylists = [
-    { name: 'Eze', photoPlaceholder: 'Foto Eze' },
-    { name: 'Nico', photoPlaceholder: 'Foto Nico' }
-  ];
 
   const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
   const daysOfWeek = ["Do", "Lu", "Ma", "Mi", "Ju", "Vi", "Sa"];
@@ -39,6 +35,9 @@ const BatikLanding = () => {
         const servSnap = await getDocs(collection(db, "servicios"));
         setDbServices(servSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         
+        const pelSnap = await getDocs(collection(db, "peluqueros"));
+        setDbStylists(pelSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+
         const horSnap = await getDocs(collection(db, "horarios"));
         setHorariosConfig(horSnap.docs.map(doc => doc.data()));
 
@@ -226,12 +225,14 @@ const BatikLanding = () => {
                 <div>
                   <label className="block text-xs sm:text-sm font-medium text-neutral-400 mb-3">Peluquero:</label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                    {stylists.map(s => (
-                      <button key={s.name} type="button" onClick={() => setBookingData({...bookingData, stylist: s.name, date: '', time: ''})}
-                        className={`flex items-center gap-4 p-3 sm:p-4 border rounded-xl transition ${bookingData.stylist === s.name ? 'border-neutral-300 bg-neutral-700 text-white shadow-md' : 'border-neutral-700 bg-neutral-900 hover:border-neutral-500 text-neutral-300'}`}
+                    {dbStylists.map(s => (
+                      <button key={s.id} type="button" onClick={() => setBookingData({...bookingData, stylist: s.nombre, date: '', time: ''})}
+                        className={`flex items-center gap-4 p-3 sm:p-4 border rounded-xl transition ${bookingData.stylist === s.nombre ? 'border-neutral-300 bg-neutral-700 text-white shadow-md' : 'border-neutral-700 bg-neutral-900 hover:border-neutral-500 text-neutral-300'}`}
                       >
-                        <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-neutral-800 border border-neutral-600 flex items-center justify-center shrink-0"><span className="text-[9px] sm:text-[10px] text-neutral-500">{s.photoPlaceholder}</span></div>
-                        <span className="font-bold text-base sm:text-lg">{s.name}</span>
+                        <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-neutral-800 border border-neutral-600 flex items-center justify-center shrink-0 overflow-hidden">
+                          {s.fotoUrl ? <img src={s.fotoUrl} alt={s.nombre} className="w-full h-full object-cover" /> : <span className="text-[9px] sm:text-[10px] text-neutral-500">{s.nombre.charAt(0)}</span>}
+                        </div>
+                        <span className="font-bold text-base sm:text-lg">{s.nombre}</span>
                       </button>
                     ))}
                   </div>
@@ -372,6 +373,31 @@ const BatikLanding = () => {
                   <p className="text-neutral-400 text-xs sm:text-sm flex-1 mb-6 sm:mb-8 leading-relaxed font-medium">{svc.description || 'Consulta más detalles en el local.'}</p>
                   <a href="#turnos" onClick={() => { setBookingData({...bookingData, service: svc.name}); setStep(1); }} className="block text-center w-full bg-neutral-800 border border-neutral-700 text-neutral-200 font-black py-3 rounded-lg hover:bg-neutral-200 hover:text-neutral-900 transition mt-auto shadow-sm">Agendar este corte</a>
                 </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section id="peluqueros-lista" className="py-16 sm:py-20 px-4 sm:px-6 max-w-6xl mx-auto border-t border-neutral-800">
+        <div className="text-center mb-12 sm:mb-16">
+          <h2 className="text-3xl sm:text-4xl font-black tracking-widest text-neutral-100 uppercase">Nuestro Equipo</h2>
+          <p className="text-neutral-400 mt-2 sm:mt-4 text-base sm:text-lg font-bold">Conocé a nuestros profesionales</p>
+        </div>
+        {loadingConfig ? <div className="text-center text-neutral-500 py-10 font-bold">Cargando equipo...</div> : dbStylists.length === 0 ? <div className="text-center text-neutral-500 py-10 font-bold">Aún no hay peluqueros configurados.</div> : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
+            {dbStylists.map(p => (
+              <div key={p.id} className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden flex flex-col hover:border-neutral-600 transition shadow-lg group items-center p-6 text-center">
+                <div className="w-32 h-32 mb-4 rounded-full overflow-hidden border-4 border-neutral-800 shadow-xl">
+                  {p.fotoUrl ? (
+                    <img src={p.fotoUrl} alt={p.nombre} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+                  ) : (
+                    <div className="w-full h-full bg-neutral-950 flex items-center justify-center"><span className="text-neutral-600 text-2xl font-black">{p.nombre.charAt(0)}</span></div>
+                  )}
+                </div>
+                <h3 className="text-xl sm:text-2xl font-black text-neutral-100 mb-2">{p.nombre}</h3>
+                <p className="text-neutral-400 text-sm sm:text-base mb-6 leading-relaxed font-medium">{p.descripcion || 'Especialista en Batik.'}</p>
+                <a href="#turnos" onClick={() => { setBookingData({...bookingData, stylist: p.nombre, service: ''}); setStep(1); }} className="mt-auto block text-center w-full bg-neutral-800 border border-neutral-700 text-neutral-200 font-black py-3 rounded-lg hover:bg-neutral-200 hover:text-neutral-900 transition shadow-sm">Agendar con {p.nombre.split(' ')[0]}</a>
               </div>
             ))}
           </div>
