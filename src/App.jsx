@@ -7,7 +7,7 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<BatikLanding />} />
-        <Route path="/admin" element={<Dashboard salonName="Peluquería Atencia" />} />
+        <Route path="/admin" element={<Dashboard salonName="Panel Administrativo" />} />
       </Routes>
     </BrowserRouter>
   );
