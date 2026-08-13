@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { collection, addDoc, query, where, getDocs } from "firebase/firestore";
+import { collection, addDoc, query, where, getDocs, doc, runTransaction } from "firebase/firestore";
 import { db } from './firebase'; 
 
 const defaultTimes = ['10:00', '10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30', '18:00'];
@@ -83,11 +83,24 @@ const BatikLanding = () => {
   const handleConfirmBooking = async () => {
     setLoading(true);
     try {
-      await addDoc(collection(db, "turnos"), {
-        service: bookingData.service, stylist: bookingData.stylist,
-        date: bookingData.date, time: bookingData.time,
-        nombre: bookingData.clientName, telefono: bookingData.clientPhone, correo: bookingData.clientEmail,
-        origen: 'Web', createdAt: new Date()
+      // ID determinístico por peluquero+fecha+hora: dos reservas al mismo horario
+      // apuntan siempre al mismo documento, así Firestore puede arbitrar cuál gana.
+      const slotId = `${bookingData.stylist}_${bookingData.date}_${bookingData.time}`
+        .replace(/[^a-zA-Z0-9_-]/g, '-');
+      const turnoRef = doc(db, "turnos", slotId);
+
+      await runTransaction(db, async (transaction) => {
+        const existing = await transaction.get(turnoRef);
+        if (existing.exists()) {
+          // Alguien reservó este mismo horario en el ratito entre que lo eligió y confirmó
+          throw new Error('SLOT_TAKEN');
+        }
+        transaction.set(turnoRef, {
+          service: bookingData.service, stylist: bookingData.stylist,
+          date: bookingData.date, time: bookingData.time,
+          nombre: bookingData.clientName, telefono: bookingData.clientPhone, correo: bookingData.clientEmail,
+          origen: 'Web', createdAt: new Date()
+        });
       });
 
       // Enviamos los datos al Webhook de n8n
@@ -110,7 +123,14 @@ const BatikLanding = () => {
 
       setStep(4);
     } catch (error) {
-      alert('Hubo un error al procesar el turno. Intentá de nuevo.');
+      if (error.message === 'SLOT_TAKEN') {
+        alert('Justo se acaba de ocupar ese horario. Elegí otro, por favor.');
+        // Refrescamos los horarios ocupados para que el usuario vea el estado real
+        setOccupiedTimes(prev => Array.from(new Set([...prev, bookingData.time])));
+        setBookingData({ ...bookingData, time: '' });
+      } else {
+        alert('Hubo un error al procesar el turno. Intentá de nuevo.');
+      }
     }
     setLoading(false);
   };
@@ -170,7 +190,7 @@ const BatikLanding = () => {
       {/* NAVBAR RESPONSIVE */}
       <nav className="fixed top-0 w-full bg-neutral-900/95 backdrop-blur-md border-b border-neutral-800 z-50">
         <div className="max-w-6xl mx-auto px-6 h-20 flex items-center justify-between">
-          <div className="text-2xl font-bold tracking-widest">BATIK</div>
+          <div className="text-2xl font-bold tracking-widest">STUDIO</div>
           
           {/* Menu Desktop */}
           <div className="hidden md:flex gap-8 text-sm font-medium text-neutral-400">
@@ -200,7 +220,7 @@ const BatikLanding = () => {
       </nav>
 
       <section id="home" className="pt-32 pb-16 px-4 flex flex-col items-center justify-center text-center">
-        <h1 className="text-6xl sm:text-7xl md:text-9xl font-black tracking-tighter mb-4 text-neutral-100">BATIK</h1>
+        <h1 className="text-6xl sm:text-7xl md:text-9xl font-black tracking-tighter mb-4 text-neutral-100">STUDIO</h1>
         <p className="text-lg sm:text-xl md:text-2xl text-neutral-400 font-light tracking-wide uppercase mb-10">Peluquería Unisex</p>
         <a href="#turnos" className="bg-neutral-100 text-neutral-900 font-bold py-3 sm:py-4 px-6 sm:px-10 rounded-full hover:bg-white transition text-base sm:text-lg shadow-lg">AGENDAR TURNO</a>
       </section>
@@ -354,7 +374,7 @@ const BatikLanding = () => {
       <section id="servicios-lista" className="py-16 sm:py-20 px-4 sm:px-6 max-w-6xl mx-auto border-t border-neutral-800">
         <div className="text-center mb-12 sm:mb-16">
           <h2 className="text-3xl sm:text-4xl font-black tracking-widest text-neutral-100 uppercase">Nuestros Servicios</h2>
-          <p className="text-neutral-400 mt-2 sm:mt-4 text-base sm:text-lg font-bold">Elegí tu estilo en Batik</p>
+          <p className="text-neutral-400 mt-2 sm:mt-4 text-base sm:text-lg font-bold">Elegí tu estilo</p>
         </div>
         {loadingConfig ? <div className="text-center text-neutral-500 py-10 font-bold">Cargando catálogo...</div> : dbServices.length === 0 ? <div className="text-center text-neutral-500 py-10 font-bold">Aún no hay servicios disponibles.</div> : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
@@ -363,7 +383,7 @@ const BatikLanding = () => {
                 {svc.image ? (
                   <div className="h-48 sm:h-56 w-full overflow-hidden relative"><img src={svc.image} alt={svc.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" /><div className="absolute inset-0 bg-gradient-to-t from-neutral-900 to-transparent"></div></div>
                 ) : (
-                  <div className="h-48 sm:h-56 w-full bg-neutral-950 flex items-center justify-center border-b border-neutral-800"><span className="text-neutral-600 text-sm uppercase tracking-widest font-black">Batik</span></div>
+                  <div className="h-48 sm:h-56 w-full bg-neutral-950 flex items-center justify-center border-b border-neutral-800"><span className="text-neutral-600 text-sm uppercase tracking-widest font-black">STUDIO</span></div>
                 )}
                 <div className="p-5 sm:p-6 flex flex-col flex-1 relative -mt-6 sm:-mt-8">
                   <div className="flex justify-between items-start mb-3 bg-neutral-900 pt-2 rounded-t-lg">
@@ -396,7 +416,7 @@ const BatikLanding = () => {
                   )}
                 </div>
                 <h3 className="text-xl sm:text-2xl font-black text-neutral-100 mb-2">{p.nombre}</h3>
-                <p className="text-neutral-400 text-sm sm:text-base mb-6 leading-relaxed font-medium">{p.descripcion || 'Especialista en Batik.'}</p>
+                <p className="text-neutral-400 text-sm sm:text-base mb-6 leading-relaxed font-medium">{p.descripcion || 'Especialista en su rubro.'}</p>
                 <a href="#turnos" onClick={() => { setBookingData({...bookingData, stylist: p.nombre, service: ''}); setStep(1); }} className="mt-auto block text-center w-full bg-neutral-800 border border-neutral-700 text-neutral-200 font-black py-3 rounded-lg hover:bg-neutral-200 hover:text-neutral-900 transition shadow-sm">Agendar con {p.nombre.split(' ')[0]}</a>
               </div>
             ))}
@@ -406,7 +426,7 @@ const BatikLanding = () => {
 
       <footer id="contacto" className="bg-neutral-950 pt-16 pb-8 border-t border-neutral-800">
         <div className="max-w-4xl mx-auto px-6 text-center flex flex-col items-center">
-          <h2 className="text-2xl sm:text-3xl font-black tracking-widest text-neutral-100 mb-6">BATIK</h2>
+          <h2 className="text-2xl sm:text-3xl font-black tracking-widest text-neutral-100 mb-6">STUDIO</h2>
           <div className="space-y-2 mb-10 text-neutral-400 text-xs sm:text-sm font-bold">
             <p>Gral. Julio A. Roca 1296</p>
             <p>M5539 Las Heras, Mendoza, Argentina</p>
