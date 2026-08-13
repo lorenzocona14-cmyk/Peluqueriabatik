@@ -1,14 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import './Dashboard.css';
-import { db } from './firebase';
+import { db, auth } from './firebase';
 import { collection, onSnapshot, addDoc, deleteDoc, doc, serverTimestamp, query, orderBy } from 'firebase/firestore';
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 
 const IMGBB_API_KEY = '9d8cc5a9d9abff0bc9050f7288a07f80';
 
 export default function Dashboard({ salonName }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [loginForm, setLoginForm] = useState({ username: '', password: '' });
+  const [authLoading, setAuthLoading] = useState(true);
+  const [loginForm, setLoginForm] = useState({ email: '', password: '' });
+  const [loginError, setLoginError] = useState('');
+  const [loggingIn, setLoggingIn] = useState(false);
   const [activeTab, setActiveTab] = useState('resumen');
+
+  // Escucha el estado real de sesión de Firebase (persiste al recargar la página)
+  useEffect(() => {
+    const unsubAuth = onAuthStateChanged(auth, (user) => {
+      setIsAuthenticated(!!user);
+      setAuthLoading(false);
+    });
+    return () => unsubAuth();
+  }, []);
   
   // Data States
   const [peluqueros, setPeluqueros] = useState([]);
@@ -31,8 +44,10 @@ export default function Dashboard({ salonName }) {
   const [modoHorario, setModoHorario] = useState('bloquear'); // 'bloquear' o 'agregar'
   const [modoFecha, setModoFecha] = useState('bloquear'); // 'bloquear' o 'desbloquear'
 
-  // Fetch all data
+  // Fetch all data — solo una vez que hay sesión real confirmada
   useEffect(() => {
+    if (!isAuthenticated) return;
+
     const unsubPeluqueros = onSnapshot(collection(db, 'peluqueros'), (snap) => setPeluqueros(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
     const unsubServicios = onSnapshot(collection(db, 'servicios'), (snap) => setServicios(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
     const unsubTurnos = onSnapshot(query(collection(db, 'turnos'), orderBy('createdAt', 'desc')), (snap) => setTurnos(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
@@ -42,7 +57,7 @@ export default function Dashboard({ salonName }) {
     return () => {
       unsubPeluqueros(); unsubServicios(); unsubTurnos(); unsubFechas(); unsubHorarios();
     };
-  }, []);
+  }, [isAuthenticated]);
 
   const uploadImage = async (file) => {
     if (!file) return '';
@@ -166,19 +181,32 @@ export default function Dashboard({ salonName }) {
     }
   };
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    if (loginForm.username === 'admin' && loginForm.password === 'admin') {
-      setIsAuthenticated(true);
-    } else {
-      alert('Credenciales incorrectas');
+    setLoginError('');
+    setLoggingIn(true);
+    try {
+      // Verifica el usuario/contraseña contra Firebase Authentication (no contra un valor fijo en el código)
+      await signInWithEmailAndPassword(auth, loginForm.email.trim(), loginForm.password);
+      // onAuthStateChanged se encarga de poner isAuthenticated en true
+    } catch (error) {
+      setLoginError('Email o contraseña incorrectos.');
     }
+    setLoggingIn(false);
   };
 
-  const handleLogout = () => {
-    setIsAuthenticated(false);
-    setLoginForm({ username: '', password: '' });
+  const handleLogout = async () => {
+    await signOut(auth);
+    setLoginForm({ email: '', password: '' });
   };
+
+  if (authLoading) {
+    return (
+      <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: 'var(--ink)', color: 'var(--paper)' }}>
+        Cargando...
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return (
@@ -186,14 +214,15 @@ export default function Dashboard({ salonName }) {
         <form onSubmit={handleLogin} style={{ background: 'var(--paper)', padding: '40px', borderRadius: '12px', width: '300px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <h2 style={{ margin: 0, textAlign: 'center', color: 'var(--ink)' }}>Iniciar Sesión</h2>
           <div>
-            <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px', fontWeight: 'bold' }}>Usuario</label>
-            <input type="text" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--line)' }} value={loginForm.username} onChange={(e) => setLoginForm({ ...loginForm, username: e.target.value })} />
+            <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px', fontWeight: 'bold' }}>Email</label>
+            <input type="email" autoComplete="username" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--line)' }} value={loginForm.email} onChange={(e) => setLoginForm({ ...loginForm, email: e.target.value })} />
           </div>
           <div>
             <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px', fontWeight: 'bold' }}>Contraseña</label>
-            <input type="password" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--line)' }} value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} />
+            <input type="password" autoComplete="current-password" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--line)' }} value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} />
           </div>
-          <button type="submit" className="btn-primary gold" style={{ marginTop: '10px' }}>Ingresar</button>
+          {loginError && <p style={{ color: '#b91c1c', fontSize: '13px', margin: 0 }}>{loginError}</p>}
+          <button type="submit" className="btn-primary gold" style={{ marginTop: '10px' }} disabled={loggingIn}>{loggingIn ? 'Ingresando...' : 'Ingresar'}</button>
         </form>
       </div>
     );
